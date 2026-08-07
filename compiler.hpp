@@ -32,8 +32,6 @@ struct Token{
     int col_no;
 };
 
-#include<memory>
-#include<iostream>
 class ASTNode{
 public:
     virtual ~ASTNode() = default;
@@ -53,12 +51,24 @@ public:
     }
 };
 
+class UnaryExpr : public ExprNode{
+public:
+    Tok op;
+    std::unique_ptr<ExprNode> operand;
+    UnaryExpr(Tok oper, std::unique_ptr<ExprNode> opera) : op(std::move(oper)), operand(std::move(opera)){}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "UnaryExpr(" << static_cast<int>(op) << ")\n";
+        operand->dump(indent + 2);
+    }
+
+};
+
 class BinaryExpr : public ExprNode{
 public:
     Tok op;
-    ASTNodePtr left;
-    ASTNodePtr right;
-    BinaryExpr(Tok oper, ASTNodePtr lhs, ASTNodePtr rhs)
+    std::unique_ptr<ExprNode> left;
+    std::unique_ptr<ExprNode> right;
+    BinaryExpr(Tok oper, std::unique_ptr<ExprNode> lhs, std::unique_ptr<ExprNode> rhs)
         : op(oper), left(std::move(lhs)), right(std::move(rhs)) {}
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "BinaryExpr(" << static_cast<int>(op) << ")\n";
@@ -71,8 +81,8 @@ class StatementNode : public ASTNode{};
 
 class ReturnStatement : public StatementNode{
 public:
-    ASTNodePtr expr;
-    ReturnStatement(ASTNodePtr e) : expr(std::move(e)) {}
+    std::unique_ptr<ExprNode> expr;
+    ReturnStatement(std::unique_ptr<ExprNode> e) : expr(std::move(e)) {}
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "ReturnStatement\n";
         expr->dump(indent + 2);
@@ -81,7 +91,7 @@ public:
 
 class BlockStatement : public StatementNode{
 public:
-    std::vector<ASTNodePtr> statements;
+    std::vector<std::unique_ptr<StatementNode>> statements;
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "BlockStatement\n";
         for(const auto& stmt : statements){
@@ -104,8 +114,8 @@ public:
     std::string name;
     TypeKind return_type;
     std::vector<Param> params;
-    ASTNodePtr body;
-    FunctionNode(const std::string& n, TypeKind ret_type, std::vector<Param> p, ASTNodePtr b)
+    std::unique_ptr<BlockStatement> body;
+    FunctionNode(const std::string& n, TypeKind ret_type, std::vector<Param> p, std::unique_ptr<BlockStatement> b)
         : name(n), return_type(ret_type), params(std::move(p)), body(std::move(b)) {}
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "FunctionNode(" << name << ")\n";
@@ -121,7 +131,7 @@ public:
 
 class ProgramNode : public ASTNode{
 public:
-    std::vector<ASTNodePtr> functions;
+    std::vector<std::unique_ptr<FunctionNode>> functions;
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "ProgramNode\n";
         for(const auto& func : functions){
@@ -132,7 +142,7 @@ public:
 
 
 class Parser {
-private:
+public:
     const std::vector<Token>& tokens;
     size_t pos = 0;
     
@@ -158,28 +168,46 @@ private:
         return false;
     }
     
-    ASTNodePtr parse_program();
-    ASTNodePtr parse_function();
+    std::unique_ptr<ProgramNode> parse_program();
+    std::unique_ptr<FunctionNode> parse_function();
     std::vector<Param> parse_parameters();
-    ASTNodePtr parse_block();
-    ASTNodePtr parse_statement();
-    ASTNodePtr parse_return_statement();
+    std::unique_ptr<BlockStatement> parse_block();
+    std::unique_ptr<StatementNode> parse_statement();
+    std::unique_ptr<ReturnStatement> parse_return_statement();
     
     // Pratt 表达式解析
-    ASTNodePtr parse_expression(int min_bp = 0);
-    ASTNodePtr nud(const Token& token);
-    ASTNodePtr led(const Token& token, ASTNodePtr left, ASTNodePtr right);
+    std::unique_ptr<ExprNode> parse_expression(int min_bp = 0);
+    std::unique_ptr<ExprNode> nud(const Token& token);
+    std::unique_ptr<ExprNode> led(const Token& token, std::unique_ptr<ExprNode> left, std::unique_ptr<ExprNode> right);
     int left_binding_power(Tok type);
     int right_binding_power(Tok type);
     
 public:
     explicit Parser(const std::vector<Token>& toks) : tokens(toks) {}
-    ASTNodePtr parse();
+    std::unique_ptr<ProgramNode> parse();
+};
+
+class CodeGen {
+public:
+    void generate(ASTNode* ast, std::ostream& out);
+    
+private:
+    std::vector<std::string> instructions;
+    
+    void emit(const std::string& line){instructions.push_back(line);}
+    
+    void gen_program(const ProgramNode* node);
+    void gen_function(const FunctionNode* node);
+    void gen_block(const BlockStatement* node);
+    void gen_statement(const StatementNode* node);
+    void gen_expr(const ExprNode* node);
+    void gen_return(const ReturnStatement* node);
 };
 
 
+
 class Compiler {
-private:
+public:
     std::string source_path;
     std::string output_path;
     std::string source_code;
@@ -193,4 +221,6 @@ public:
         : source_path(src_path), output_path(out_path) {}
     void compile();
 };
+
+
 

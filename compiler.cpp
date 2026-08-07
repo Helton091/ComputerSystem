@@ -3,7 +3,7 @@ int Parser::left_binding_power(Tok type) {
     switch(type) {
         case Tok::ADD: case Tok::SUB: return 10;
         case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return 20;
-        default: return 0;
+        default: return -1;  // 非运算符必须返回负数，否则 0 < 0 为 false 会误入循环
     }
 }
 
@@ -11,11 +11,11 @@ int Parser::right_binding_power(Tok type) {
     switch(type) {
         case Tok::ADD: case Tok::SUB: return 11;
         case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return 21;
-        default: return 0;
+        default: return -1;
     }
 }
 
-ASTNodePtr Parser::led(const Token& token, ASTNodePtr left, ASTNodePtr right){
+std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNode> left, std::unique_ptr<ExprNode> right){
     switch(token.type){
     case Tok::ADD:
     case Tok::SUB:
@@ -28,48 +28,57 @@ ASTNodePtr Parser::led(const Token& token, ASTNodePtr left, ASTNodePtr right){
     }
 }
 
-ASTNodePtr Parser::nud(const Token& token){
+std::unique_ptr<ExprNode> Parser::nud(const Token& token){
     switch(token.type){
     case Tok::NUMBER:
         return std::make_unique<NumberNode>(std::stoi(token.text));
+    case Tok::LPAREN:{
+        std::unique_ptr<ExprNode> result = parse_expression(0);
+        expect(Tok::RPAREN,"expect corressponding rparen");
+        return result;
+    }
+    case Tok::SUB:{
+        std::unique_ptr<ExprNode> oper = parse_expression(21);
+        return std::make_unique<UnaryExpr>(Tok::SUB,std::move(oper)); 
+    }
     default:
         throw std::runtime_error("unknown nud token");
     }
 }
 
-ASTNodePtr Parser::parse_expression(int min_bp) {
+std::unique_ptr<ExprNode> Parser::parse_expression(int min_bp) {
     Token token = advance();
-    ASTNodePtr left = nud(token);
+    std::unique_ptr<ExprNode> left = nud(token);
     while (true) {
         const Token& next = peek();
         int lbp = left_binding_power(next.type);
         if (lbp < min_bp) break;
         advance(); 
         int rbp = right_binding_power(next.type);
-        ASTNodePtr right = parse_expression(rbp);
+        std::unique_ptr<ExprNode> right = parse_expression(rbp);
 
         left = led(next, std::move(left), std::move(right));
     }
     return left;
 }
 
-ASTNodePtr Parser::parse_statement(){
+std::unique_ptr<StatementNode> Parser::parse_statement(){
     if(match(Tok::KW_RETURN)){
         return parse_return_statement();
     }
     throw std::runtime_error("Unknown statement");
 }
 
-ASTNodePtr Parser::parse_return_statement(){
-    ASTNodePtr expr = parse_expression();
+std::unique_ptr<ReturnStatement> Parser::parse_return_statement(){
+    std::unique_ptr<ExprNode> expr = parse_expression();
     expect(Tok::SEMICOLON, "Expected ';' after return statement");
     return std::make_unique<ReturnStatement>(std::move(expr));
 }
 
-ASTNodePtr Parser::parse_block(){
+std::unique_ptr<BlockStatement> Parser::parse_block(){
     std::unique_ptr<BlockStatement> block = std::make_unique<BlockStatement>();
     while(pos < tokens.size() && tokens[pos].type != Tok::RCURLY){
-        ASTNodePtr stmt = parse_statement();
+        std::unique_ptr<StatementNode> stmt = parse_statement();
         block->statements.push_back(std::move(stmt));
     }
     return block;
@@ -88,7 +97,7 @@ std::vector<Param> Parser::parse_parameters(){
     return params;
 }
 
-ASTNodePtr Parser::parse_function(){
+std::unique_ptr<FunctionNode> Parser::parse_function(){
     expect(Tok::KW_INT, "Expected 'int' at the beginning of function declaration");
     const Token& name_token = expect(Tok::IDENT, "Expected function name");
     std::string func_name = name_token.text;
@@ -96,22 +105,112 @@ ASTNodePtr Parser::parse_function(){
     std::vector<Param> params = parse_parameters();
     expect(Tok::RPAREN, "Expected ')' after parameters");
     expect(Tok::LCURLY, "Expected '{' at the beginning of function body");
-    ASTNodePtr body = parse_block();
+    std::unique_ptr<BlockStatement> body = parse_block();
     expect(Tok::RCURLY, "Expected '}' at the end of function body");
     return std::make_unique<FunctionNode>(func_name, TypeKind::INT, std::move(params), std::move(body));
 }
 
-ASTNodePtr Parser::parse(){
+std::unique_ptr<ProgramNode> Parser::parse(){
     return parse_program();
 }
 
-ASTNodePtr Parser::parse_program(){
+std::unique_ptr<ProgramNode> Parser::parse_program(){
     std::unique_ptr<ProgramNode> program = std::make_unique<ProgramNode>();
     while(pos < tokens.size() && tokens[pos].type != Tok::EOF_TOK){
-        ASTNodePtr func = parse_function();
+        std::unique_ptr<FunctionNode> func = parse_function();
         program->functions.push_back(std::move(func));
     }
     return program;
+}
+
+void CodeGen::gen_expr(const ExprNode* node){
+    if(auto num = dynamic_cast<const NumberNode*>(node)){
+        emit("addi t0, zero, " + std::to_string(num->value));
+        emit("addi sp, sp, -4");
+        emit("sw t0, 0(sp)");
+    } else if(auto unary = dynamic_cast<const UnaryExpr*>(node)){
+        gen_expr(unary->operand.get());
+        emit("lw t0, 0(sp)");
+        emit("addi sp, sp, 4");
+        switch(unary->op){
+        case Tok::SUB:
+            emit("sub t0, zero, t0");
+            break;
+        default:
+            throw std::runtime_error("unknown unary operation");
+        }
+        emit("addi sp, sp, -4");
+        emit("sw t0, 0(sp)");
+    } else if(auto binary = dynamic_cast<const BinaryExpr*>(node)){
+        gen_expr(binary->left.get());
+        gen_expr(binary->right.get());
+
+        emit("lw t1, 0(sp)");
+        emit("addi sp, sp, 4");
+        emit("lw t0, 0(sp)");
+        emit("addi sp, sp, 4");
+
+        switch (binary->op) {
+        case Tok::ADD:    emit("add t0, t0, t1"); break;   
+        case Tok::SUB:    emit("sub t0, t0, t1"); break;   
+        case Tok::STAR:   emit("mul t0, t0, t1"); break;   
+        case Tok::SLASH:  emit("div t0, t0, t1"); break;   
+        case Tok::PERCENT: emit("rem t0, t0, t1"); break; 
+        default: throw std::runtime_error("unknown binary op");
+        }
+    
+        emit("addi sp, sp, -4");
+        emit("sw t0, 0(sp)");
+    } else {
+        throw std::runtime_error("unknown expression node");
+    }
+}
+
+void CodeGen::gen_return(const ReturnStatement* node){
+    gen_expr(node->expr.get());
+    emit("lw a0, 0(sp)");
+    emit("addi sp, sp, 4");
+    emit("li a7, 10");
+    emit("ecall");
+}
+
+void CodeGen::gen_statement(const StatementNode* node){
+    if(auto ret = dynamic_cast<const ReturnStatement*>(node)){
+        gen_return(ret);
+    } else {
+        throw std::runtime_error("unknown statement");
+    }
+}
+
+void CodeGen::gen_block(const BlockStatement* node){
+    for(const std::unique_ptr<StatementNode>& snode : node->statements){
+        gen_statement(snode.get());
+    }
+}
+
+void CodeGen::gen_function(const FunctionNode* node){
+    //emit(".globl " + node->name);
+    emit(node->name + ":");
+    gen_block(node->body.get());
+}
+
+void CodeGen::gen_program(const ProgramNode* node) {
+    //emit(".text");
+    for (const std::unique_ptr<FunctionNode>& func_ptr : node->functions) {
+        gen_function(func_ptr.get());
+    }
+}
+
+void CodeGen::generate(ASTNode* ast, std::ostream& out){
+    const ProgramNode* program = dynamic_cast<const ProgramNode*>(ast);
+    if(!program){
+        throw std::runtime_error("root must be ProgramNode");
+    }
+    instructions.clear();
+    gen_program(program);
+    for(const std::string& line : instructions){
+        out << line << "\n";
+    }
 }
 
 void Compiler::read_source_file() {
@@ -229,4 +328,25 @@ void Compiler::Lexer() {
 
     }
     tokens.push_back({Tok::EOF_TOK, "", line_no, col_no});
+}
+
+void Compiler::compile() {
+    read_source_file();
+    if(has_error) return;
+
+    Lexer();
+    if(has_error) return;
+
+    Parser parser(tokens);
+    std::unique_ptr<ProgramNode> ast = parser.parse();
+
+    std::ofstream out(output_path);
+    if(!out) {
+        std::cerr << "Error: cannot open output file '" << output_path << "'\n";
+        has_error = true;
+        return;
+    }
+
+    CodeGen codegen;
+    codegen.generate(ast.get(), out);
 }
