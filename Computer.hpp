@@ -3,6 +3,7 @@
 #include<cstdint>
 #include<cstddef>
 #include<vector>
+#include<functional>
 
 inline constexpr uint32_t MEM_SIZE = 0x400000; // 4MB
 
@@ -12,6 +13,9 @@ private:
     uint32_t RegFile[32] = {0};
     uint32_t PC = 0;
     bool halted = false;
+
+    // 调试钩子：execute_step 取指后调用，不注册时为空（零开销）
+    std::function<void(const Computer&)> on_step;
 
     // 写寄存器，统一拦截 x0
     void WriteReg(uint8_t idx, uint32_t val){
@@ -27,11 +31,16 @@ public:
     uint32_t get_pc() const { return PC; }
     uint32_t get_reg(uint8_t idx) const { return RegFile[idx]; }
 
-    uint8_t ReadByte(uint32_t addr){return MEM[addr];}
-    uint16_t ReadHalf(uint32_t addr){
+    // 注册调试回调（传 nullptr 或空 lambda 可清除）
+    void set_trace(std::function<void(const Computer&)> cb) {
+        on_step = std::move(cb);
+    }
+
+    uint8_t ReadByte(uint32_t addr) const {return MEM[addr];}
+    uint16_t ReadHalf(uint32_t addr) const {
         return static_cast<uint16_t>(MEM[addr]) | static_cast<uint16_t>(MEM[addr+1]) << 8;
     }
-    uint32_t ReadWord(uint32_t addr){
+    uint32_t ReadWord(uint32_t addr) const {
         return static_cast<uint32_t>(MEM[addr]) | static_cast<uint32_t>(MEM[addr+1]) << 8 | static_cast<uint32_t>(MEM[addr+2]) << 16 | static_cast<uint32_t>(MEM[addr+3]) << 24;
     }
     void WriteByte(uint32_t addr, uint8_t data){MEM[addr] = data;}

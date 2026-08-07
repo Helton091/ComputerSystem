@@ -1,0 +1,262 @@
+================================================================
+C-- 编译器开发计划
+================================================================
+
+语言名：C--
+目标：C 语言的简化子集，逐版扩展
+工具链：compiler → .s → assembler.exe → .bin → simulator.exe
+后缀：源文件 .cmm，输出 .cmm.s / .cmm.bin
+
+================================================================
+一、编译器整体执行流程
+================================================================
+
+源代码 (.cmm)
+    │
+    ▼ ① Lexer 词法分析
+    │   扫描字符流，识别 Token（关键字/标识符/数字/运算符/分隔符）
+    │   跳过空白符和注释
+    │
+    ▼ ② Parser 语法分析
+    │   递归下降，按 EBNF 规则把 Token 组织成 AST
+    │   处理运算符优先级、结合性
+    │
+    ▼ ③ Semantic 语义分析（P3 起启用）
+    │   构建符号表，类型检查，作用域解析
+    │
+    ▼ ④ IR Gen 中间代码生成（P4 起启用）
+    │   AST → 三地址码 / 类 LLVM IR
+    │   与目标机器无关，便于优化和跨平台
+    │
+    ▼ ⑤ Optimize 优化（P4+ 可选）
+    │   常量折叠、死代码消除、公共子表达式消除等
+    │
+    ▼ ⑥ CodeGen 目标代码生成
+    │   AST/IR → RISC-V 汇编 (.s)
+    │   寄存器分配、栈帧管理、调用约定
+    │
+    ▼ ⑦ Assemble & Link
+    │   assembler.exe: .s → .bin
+    │
+    ▼ ⑧ Run
+    │   simulator.exe: .bin → 输出
+
+P1-P2 阶段：①②⑥⑦⑧（直接 AST → 汇编，跳过 IR）
+P3 阶段：   ①②③⑥⑦⑧（加入语义分析）
+P4 阶段：   全流程（加入 IR 和优化）
+
+================================================================
+二、P1：最小骨架 —— main + return + 算术
+================================================================
+
+目标：能编译并运行
+    int main() {
+        return 1 + 2 * 3;
+    }
+模拟器输出 7。
+
+语法（EBNF）：
+    program  ::= "int" "main" "(" ")" "{" stmt "}"
+    stmt     ::= "return" expr ";"
+    expr     ::= term ( ("+" | "-") term )*
+    term     ::= factor ( ("*" | "/") factor )*
+    factor   ::= NUMBER | "(" expr ")"
+
+AST 节点：
+    Program      { Function* }
+    Function     { name, body: Stmt* }       // P1 仅 main
+    ReturnStmt   { Expr* value }
+    BinaryExpr   { op, left, right }
+    NumberExpr   { int value }
+
+CodeGen 策略：
+    - main 当函数处理，走完整 prologue/epilogue
+    - epilogue 后追加 ecall(exit) 作为程序结束
+    - 表达式求值用"算完压栈"朴素策略，结果落 t0
+    - return 把 t0 → a0
+
+关键设计决策（为后续扩展留接口）：
+    - AST 层面就有 Function 节点，P4 加多函数只是再开 parse 入口
+    - return 走 epilogue 而不是直接 ecall exit，P2/P3 加 if/while 时无需重构
+    - main 的特殊之处仅在 CodeGen 末尾多两条指令（li a7,10; ecall）
+
+待实现：
+    [ ] Lexer  —— 识别 int/main/return/NUMBER/+,-,*,/,(,),'{','}',;,';'
+    [ ] Parser —— 递归下降，构造 AST
+    [ ] CodeGen—— 遍历 AST 生成 .s
+    [ ] main   —— 串联流程，调用 assembler.exe 和 simulator.exe
+
+测试样例：
+    test_p1_1.cmm: return 1+2*3;                    → 7
+    test_p1_2.cmm: return (10-2)/4+5;               → 7
+    test_p1_3.cmm: return 100;                      → 100
+
+================================================================
+三、P2：变量与语句块
+================================================================
+
+目标：能编译
+    int main() {
+        int a = 10;
+        int b = 20;
+        int c = a + b * 2;
+        return c;
+    }
+
+新增语法：
+    stmt      ::= "return" expr ";"
+                | "int" IDENT "=" expr ";"      // 变量声明
+                | IDENT "=" expr ";"            // 赋值
+                | "{" stmt* "}"                 // 语句块
+                | expr ";"                      // 表达式语句
+    factor    ::= ... | IDENT                   // 变量引用
+
+AST 新节点：
+    VarDeclStmt  { name, init: Expr* }
+    AssignStmt   { name, value: Expr* }
+    BlockStmt    { stmts: Stmt* }
+    VarExpr      { name }
+
+语义处理：
+    - 维护作用域符号表（变量名 → 栈偏移）
+    - 变量分配到栈上（sp 相对偏移）
+    - P2 仍是单 main 函数，作用域只有一个
+
+CodeGen 策略：
+    - 函数 prologue 中预留栈空间（按变量数计算 sp 偏移）
+    - 变量读写用 lw/sw 到 [sp+offset]
+    - 表达式仍用"算完压栈"策略
+
+待实现：
+    [ ] 符号表 SymbolTable
+    [ ] 变量声明/赋值的 parse 和 codegen
+    [ ] 语句块作用域（P2 可暂时只支持单层）
+
+测试样例：
+    test_p2_1.cmm: 三变量加减乘
+    test_p2_2.cmm: 嵌套表达式赋值
+    test_p2_3.cmm: 变量在表达式里多次引用
+
+================================================================
+四、P3：控制流
+================================================================
+
+目标：能编译
+    int main() {
+        int i = 0;
+        int sum = 0;
+        while (i < 10) {
+            sum = sum + i;
+            i = i + 1;
+        }
+        if (sum > 40) {
+            return sum;
+        } else {
+            return 0;
+        }
+    }
+
+新增语法：
+    stmt      ::= ... 
+                | "if" "(" expr ")" stmt ("else" stmt)?
+                | "while" "(" expr ")" stmt
+    expr      ::= ... | compare
+    compare   ::= additive (("<" | ">" | "<=" | ">=" | "==" | "!=") additive)*
+
+AST 新节点：
+    IfStmt     { cond, then, else }
+    WhileStmt  { cond, body }
+    BinaryExpr 扩展 op 集合到比较运算
+
+Codegen 策略：
+    - 控制流用 label + beq/bne/branch 实现
+    - 比较：sub + sltu/slt 或者直接 slt
+    - 标签命名：.L_if_false_0, .L_while_end_1 等唯一计数器
+
+语义处理：
+    - 类型检查：比较运算返回 int (0/1)
+    - 逻辑运算短路（P3 可选 && || !）
+
+待实现：
+    [ ] Label 计数器
+    [ ] if/while 的 codegen
+    [ ] 比较运算的 codegen
+    [ ] 语义分析雏形（类型/作用域检查）
+
+测试样例：
+    test_p3_1.cmm: while 求和（1+2+...+9 = 45）
+    test_p3_2.cmm: if-else 分支
+    test_p3_3.cmm: 嵌套循环
+
+================================================================
+五、P4：函数与 IR
+================================================================
+
+目标：能编译
+    int fib(int n) {
+        if (n <= 1) return n;
+        return fib(n-1) + fib(n-2);
+    }
+    int main() {
+        return fib(10);   // 55
+    }
+
+新增语法：
+    program   ::= function+
+    function  ::= "int" IDENT "(" params ")" "{" stmt* "}"
+    params    ::= /* empty */ | "int" IDENT ("," "int" IDENT)*
+    stmt      ::= ... | "return" expr ";"
+    factor    ::= ... | IDENT "(" args? ")"    // 函数调用
+    args      ::= expr ("," expr)*
+
+AST 新节点：
+    Function     { name, params, body }          // 通用化
+    CallExpr     { name, args }
+
+引入 IR：
+    - AST 先翻译为三地址码（TAC）
+    - TAC 指令：t1 = a + b / param x / call f, n / label L / jump L / ifz x, L
+    - CodeGen 从 TAC 生成汇编，AST→TAC→ASM 两段式
+    - 便于后续优化 pass
+
+调用约定（RV32IM 标准）：
+    - 参数 a0-a7 寄存器传，超出走栈
+    - 返回值 a0
+    - ra 由 caller 保存（caller-saved）
+    - sp 16 字节对齐
+    - 栈帧布局：[ra][saved regs][locals][args overflow]
+
+Codegen 策略：
+    - 每个函数独立 prologue/epilogue
+    - main 由 _start 调用：_start → jal main → exit
+    - 递归调用 fib 自然支持
+
+优化 pass（可选）：
+    [ ] 常量折叠
+    [ ] 死代码消除
+    [ ] 简单寄存器分配（线性扫描 / graph coloring）
+
+待实现：
+    [ ] 多函数 Parser
+    [ ] IR 数据结构 + AST→TAC 翻译
+    [ ] TAC→ASM 代码生成
+    [ ] 完整调用约定
+    [ ] 栈帧管理（局部变量 + 保存寄存器 + 参数溢出）
+
+测试样例：
+    test_p4_1.cmm: 递归 fib(10) = 55
+    test_p4_2.cmm: 多函数相互调用
+    test_p4_3.cmm: 嵌套递归（如 ackermann）
+
+================================================================
+六、里程碑总结
+================================================================
+
+P1 验收：return 1+2*3 → 7
+P2 验收：变量赋值与表达式混合
+P3 验收：while 求 1..9 之和，if-else 分支
+P4 验收：递归 fib(10) = 55
+
+每完成一个 P 都保留对应测试样例，回归测试用。
+
+================================================================

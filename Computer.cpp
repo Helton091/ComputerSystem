@@ -13,6 +13,7 @@ void Computer::execute_step() {
 
     // Fetch instruction
     uint32_t instruction = ReadWord(PC);
+    if(on_step) on_step(*this);  // 调试钩子：观察当前状态
     uint32_t next_PC = PC + 4;
     uint8_t opcode = instruction & 0b1111111;
     uint8_t funct3 = (instruction >> 12) & 0b111;
@@ -25,14 +26,16 @@ void Computer::execute_step() {
     int32_t immI = static_cast<int32_t>(instruction) >> 20;
     int32_t immS = (static_cast<int32_t>(instruction) >> 25 << 5)
                    | ((instruction >> 7) & 0x1F);
-    int32_t immB = ((static_cast<int32_t>(instruction) & 0x80000000) >> 31 << 12)
+    int32_t immB = (((instruction >> 31) & 0x1)   << 12)
                    | (((instruction >> 7)  & 0x1)  << 11)
                    | (((instruction >> 25) & 0x3F) << 5)
                    | (((instruction >> 8)  & 0xF)  << 1);
-    int32_t immJ = ((static_cast<int32_t>(instruction) & 0x80000000) >> 31 << 20)
+    immB = (immB << 19) >> 19; // 符号扩展 13→32
+    int32_t immJ = (((instruction >> 31) & 0x1)   << 20)
                    | (((instruction >> 12) & 0xFF)  << 12)
                    | (((instruction >> 20) & 0x1)   << 11)
                    | (((instruction >> 21) & 0x3FF) << 1);
+    immJ = (immJ << 11) >> 11; // 符号扩展 21→32
     uint32_t immU = instruction & 0xFFFFF000;
 
     switch(opcode) {
@@ -329,14 +332,37 @@ static std::vector<uint8_t> load_bin(const char* path) {
 }
 
 int main(int argc, char* argv[]){
+    if(argc < 2){
+        std::fprintf(stderr, "Usage: %s <program.bin> [--trace]\n", argv[0]);
+        return 1;
+    }
+
+    const char* bin_path = argv[1];
+    bool trace = false;
+    for(int i = 2; i < argc; ++i){
+        if(std::string(argv[i]) == "--trace") trace = true;
+    }
+
     Computer cpu;
-    const char* bin_path = (argc > 1) ? argv[1] : "test.bin";
     std::vector<uint8_t> code = load_bin(bin_path);
     if(code.empty()){
         std::cerr << "Failed to load: " << bin_path << "\n";
         return 1;
     }
     cpu.LoadProgram(code.data(), code.size(), 0x1000);
+
+    if(trace){
+        cpu.set_trace([](const Computer& c){
+            uint32_t pc = c.get_pc();
+            uint32_t inst = c.ReadWord(pc);
+            std::fprintf(stderr, "PC=0x%08X inst=0x%08X | a0=%d a7=%d sp=0x%08X\n",
+                         pc, inst,
+                         static_cast<int32_t>(c.get_reg(10)),
+                         static_cast<int32_t>(c.get_reg(17)),
+                         c.get_reg(2));
+        });
+    }
+
     cpu.execute();
     std::fflush(stdout);
     return 0;
