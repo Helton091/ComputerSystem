@@ -11,18 +11,22 @@ enum class Tok {
     
     IDENT, NUMBER, EOF_TOK,
     
-    KW_INT, KW_RETURN,         // P1
+    KW_INT, KW_RETURN,         
     
     LPAREN, RPAREN, LCURLY, RCURLY, SEMICOLON, COMMA,
     
     ADD, SUB, STAR, SLASH, PERCENT,
-    ASSIGN,                    // P2
-    EQ, NE, LT, GT, LE, GE,    // P3
+    ASSIGN,                    
+    EQ, NE, LT, GT, LE, GE,  
+    KW_IF, KW_ELSE, KW_WHILE,
 };
 
 inline std::unordered_map<std::string, Tok> keywords = {
     {"int", Tok::KW_INT},
     {"return", Tok::KW_RETURN},
+    {"if", Tok::KW_IF},
+    {"else", Tok::KW_ELSE},
+    {"while", Tok::KW_WHILE},
 };
 
 struct Token{
@@ -77,7 +81,43 @@ public:
 };
 
 class StatementNode : public ASTNode{};
+class WhileStmt: public StatementNode{
+public:
+    std::unique_ptr<ExprNode> cond;
+    std::unique_ptr<StatementNode> body;
 
+    WhileStmt(std::unique_ptr<ExprNode> c, std::unique_ptr<StatementNode> b)
+        : cond(std::move(c)), body(std::move(b)) {}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "WhileStmt\n";
+        std::cout << std::string(indent + 2, ' ') << "Cond:\n";
+        cond->dump(indent + 4);
+        std::cout << std::string(indent + 2, ' ') << "Body:\n";
+        body->dump(indent + 4);
+    }
+};
+
+class IfStmt : public StatementNode {
+public:
+    std::unique_ptr<ExprNode> cond;    
+    std::unique_ptr<StatementNode> then_branch;
+    std::unique_ptr<StatementNode> else_branch;
+
+    IfStmt(std::unique_ptr<ExprNode> c, std::unique_ptr<StatementNode> t,
+           std::unique_ptr<StatementNode> e = nullptr)
+        : cond(std::move(c)), then_branch(std::move(t)), else_branch(std::move(e)) {}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "IfStmt\n";
+        std::cout << std::string(indent + 2, ' ') << "Cond:\n";
+        cond->dump(indent + 4);
+        std::cout << std::string(indent + 2, ' ') << "Then:\n";
+        then_branch->dump(indent + 4);
+        if (else_branch) {
+            std::cout << std::string(indent + 2, ' ') << "Else:\n";
+            else_branch->dump(indent + 4);
+        }
+    }
+};
 class DeclStmt : public StatementNode {
 public:
     std::string name;
@@ -272,6 +312,10 @@ private:
     void gen_expr_stmt(const ExprStmt* node);
     void gen_expr(const ExprNode* node);
     void gen_return(const ReturnStatement* node);
+    void gen_if(const IfStmt* node);
+    void gen_while(const WhileStmt* node);
+    int label_counter = 0;
+    std::string new_label(const std::string& prefix){return prefix + std::to_string(label_counter++);}
 };
 
 

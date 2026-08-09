@@ -20,7 +20,19 @@ $tests = @(
     @{ name = "test_cmp7";   expect = 1 },
     @{ name = "test_cmp8";   expect = 1 },
     @{ name = "test_cmp9";   expect = 1 },
-    @{ name = "test_cmp10";  expect = 1 }
+    @{ name = "test_cmp10";  expect = 1 },
+    @{ name = "test_if1";    expect = 0 },
+    @{ name = "test_if2";    expect = 1 },
+    @{ name = "test_if3";    expect = 1 },
+    @{ name = "test_if4";    expect = 0 },
+    @{ name = "test_if5";    expect = 2 },
+    @{ name = "test_if6";    expect = 100 },
+    @{ name = "test_while1"; expect = 45 },
+    @{ name = "test_while2"; expect = 5 },
+    @{ name = "test_while3"; expect = -2 },
+    @{ name = "test_while4"; expect = 25 },
+    @{ name = "test_while5"; expect = 5 },
+    @{ name = "test_while6"; expect = 5 }
 )
 $all_pass = $true
 

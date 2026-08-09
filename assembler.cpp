@@ -391,7 +391,7 @@ void Assembler::Lexer() {
                 ++i; continue;
             }
             if(c == '#') break;
-            if(std::isalpha(c) || c == '_'){
+            if(std::isalpha(c) || c == '_' || c=='.'){
                 size_t start = i;
                 while(i < line.size()){
                     unsigned char ch = static_cast<unsigned char>(line[i]);

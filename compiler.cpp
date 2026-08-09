@@ -1,4 +1,38 @@
 #include"compiler.hpp"
+void CodeGen::gen_while(const WhileStmt* node) {
+    std::string start_label = new_label(".L_while_start_");
+    std::string end_label   = new_label(".L_while_end_");
+
+    emit(start_label + ":");
+    gen_expr(node->cond.get());
+    emit("lw t0, 0(sp)");
+    emit("addi sp, sp, 4");
+    emit("beq t0, zero, " + end_label);
+    gen_statement(node->body.get());
+    emit("j " + start_label);
+    emit(end_label + ":");
+}
+void CodeGen::gen_if(const IfStmt* node){
+    gen_expr(node->cond.get());
+    emit("lw t0, 0(sp)");
+    emit("addi sp, sp, 4");
+    if(node->else_branch){
+        std::string else_label = new_label(".L_else_");
+        std::string end_label  = new_label(".L_end_");
+        emit("beq t0, zero, " + else_label);
+        gen_statement(node->then_branch.get());
+        emit("j " + end_label);
+        emit(else_label + ":");
+        gen_statement(node->else_branch.get());
+        emit(end_label + ":");
+    } else {
+        std::string end_label = new_label(".L_end_");
+        emit("beq t0, zero, " + end_label);
+        gen_statement(node->then_branch.get());
+        emit(end_label + ":");
+    }
+}
+
 int CodeGen::lookup_variable(const std::string& name){
     for(auto it = scope_stack.rbegin(); it != scope_stack.rend(); ++it){
         auto found = it->find(name);
@@ -15,6 +49,19 @@ int CodeGen::count_decl_with_size(const BlockStatement* block){
             count += 4;
         } else if(auto bloc = dynamic_cast<const BlockStatement*>(stat.get())){
             count += count_decl_with_size(bloc);
+        } else if(auto ifs = dynamic_cast<const IfStmt*>(stat.get())){
+            if(auto then_blk = dynamic_cast<const BlockStatement*>(ifs->then_branch.get())){
+                count += count_decl_with_size(then_blk);
+            }
+            if(ifs->else_branch){
+                if(auto else_blk = dynamic_cast<const BlockStatement*>(ifs->else_branch.get())){
+                    count += count_decl_with_size(else_blk);
+                }
+            }
+        } else if(auto whs = dynamic_cast<const WhileStmt*>(stat.get())){
+            if(auto body_blk = dynamic_cast<const BlockStatement*>(whs->body.get())){
+                count += count_decl_with_size(body_blk);
+            }
         }
     }
     return count;
@@ -122,6 +169,26 @@ std::unique_ptr<StatementNode> Parser::parse_statement(){
         return parse_return_statement();
     } else if(match(Tok::KW_INT)){
         return parse_declaration_statement();
+    } else if(match(Tok::KW_IF)){
+        expect(Tok::LPAREN, "expect lparen after if");
+        std::unique_ptr<ExprNode> cond = parse_expression();
+        expect(Tok::RPAREN, "expect rparen after if");
+        std::unique_ptr<StatementNode> then_block = parse_statement();
+        std::unique_ptr<StatementNode> else_block = nullptr;
+        if(match(Tok::KW_ELSE)){
+            else_block = parse_statement();
+        }
+        return std::make_unique<IfStmt>(std::move(cond), std::move(then_block), std::move(else_block));
+    } else if(match(Tok::LCURLY)){
+        std::unique_ptr<BlockStatement> block = parse_block();
+        expect(Tok::RCURLY, "Expected '}'");
+        return block;
+    } else if(match(Tok::KW_WHILE)){
+        expect(Tok::LPAREN, "expect lparen after while");
+        std::unique_ptr<ExprNode> cond = parse_expression();
+        expect(Tok::RPAREN, "expect rparen after while");
+        std::unique_ptr<StatementNode> body = parse_statement();
+        return std::make_unique<WhileStmt>(std::move(cond), std::move(body));
     }
     // 表达式语句
     std::unique_ptr<ExprNode> expr = parse_expression();
@@ -264,6 +331,10 @@ void CodeGen::gen_statement(const StatementNode* node){
         gen_expr_stmt(expr);
     } else if(auto blk = dynamic_cast<const BlockStatement*>(node)){
         gen_block(blk);
+    } else if(auto ifs = dynamic_cast<const IfStmt*>(node)){
+        gen_if(ifs);
+    } else if(auto whs = dynamic_cast<const WhileStmt*>(node)){
+        gen_while(whs);
     }
     else {
         throw std::runtime_error("unknown statement");
