@@ -51,6 +51,51 @@ public:
     }
 };
 
+class IdentifierNode : public ExprNode{
+public:
+    std::string name;
+    IdentifierNode(std::string n) : name(std::move(n)) {}
+    
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "Identifier(" << name << ")\n";
+    }
+};
+
+class AssignmentExpr : public ExprNode {
+public:
+    std::unique_ptr<IdentifierNode> lhs;
+    std::unique_ptr<ExprNode> rhs;
+    
+    AssignmentExpr(std::unique_ptr<IdentifierNode> l, std::unique_ptr<ExprNode> r)
+        : lhs(std::move(l)), rhs(std::move(r)) {}
+    
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "AssignmentExpr\n";
+        lhs->dump(indent + 2);
+        rhs->dump(indent + 2);
+    }
+};
+
+class StatementNode : public ASTNode{};
+
+class DeclStmt : public StatementNode {
+public:
+    std::string name;
+    std::unique_ptr<ExprNode> init;  // 可能为空
+    
+    DeclStmt(std::string n, std::unique_ptr<ExprNode> i = nullptr)
+        : name(std::move(n)), init(std::move(i)) {}
+    
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "DeclStmt(" << name << ")\n";
+        if (init) init->dump(indent + 2);
+    }
+};
+
+
+
+
+
 class UnaryExpr : public ExprNode{
 public:
     Tok op;
@@ -77,7 +122,17 @@ public:
     }
 };
 
-class StatementNode : public ASTNode{};
+class ExprStmt : public StatementNode {
+public:
+    std::unique_ptr<ExprNode> expr;
+    
+    explicit ExprStmt(std::unique_ptr<ExprNode> e) : expr(std::move(e)) {}
+    
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "ExprStmt\n";
+        expr->dump(indent + 2);
+    }
+};
 
 class ReturnStatement : public StatementNode{
 public:
@@ -141,6 +196,7 @@ public:
 };
 
 
+
 class Parser {
 public:
     const std::vector<Token>& tokens;
@@ -174,6 +230,7 @@ public:
     std::unique_ptr<BlockStatement> parse_block();
     std::unique_ptr<StatementNode> parse_statement();
     std::unique_ptr<ReturnStatement> parse_return_statement();
+    std::unique_ptr<StatementNode> parse_declaration_statement();
     
     // Pratt 表达式解析
     std::unique_ptr<ExprNode> parse_expression(int min_bp = 0);
@@ -193,13 +250,26 @@ public:
     
 private:
     std::vector<std::string> instructions;
-    
+    std::vector<std::unordered_map<std::string, int>> scope_stack; //ralative to s0, aka, fp
+    int count_decl_with_size(const BlockStatement* block);
+    int calculate_frame_size(const FunctionNode* funct){return count_decl_with_size(funct->body.get()) + 4;}
+    int lookup_variable(const std::string& name);
+    void enter_scope(){scope_stack.push_back(std::unordered_map<std::string, int>{});}
+    void exit_scope(){if(!scope_stack.empty()) scope_stack.pop_back();}
+    int frame_size = 0;
+    int next_offset = -8;
+
     void emit(const std::string& line){instructions.push_back(line);}
+    
     
     void gen_program(const ProgramNode* node);
     void gen_function(const FunctionNode* node);
     void gen_block(const BlockStatement* node);
     void gen_statement(const StatementNode* node);
+    void gen_decl(const DeclStmt* node);
+    void gen_identifier(const IdentifierNode* node);
+    void gen_assignment(const AssignmentExpr* node);
+    void gen_expr_stmt(const ExprStmt* node);
     void gen_expr(const ExprNode* node);
     void gen_return(const ReturnStatement* node);
 };
