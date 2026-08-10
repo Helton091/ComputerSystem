@@ -395,7 +395,7 @@ void Assembler::Lexer() {
                 size_t start = i;
                 while(i < line.size()){
                     unsigned char ch = static_cast<unsigned char>(line[i]);
-                    if(std::isalnum(ch) || ch == '_') ++i;
+                    if(std::isalnum(ch) || ch == '_' || ch == '.') ++i;
                     else break;
                 }
                 line_tokens.emplace_back(Tok::IDENT, line.substr(start, i - start), line_no + 1);

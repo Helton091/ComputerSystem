@@ -127,6 +127,17 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token){
         return std::make_unique<UnaryExpr>(Tok::SUB,std::move(oper)); 
     }
     case Tok::IDENT:{
+        if(peek().type == Tok::LPAREN){
+            advance();
+            if(match(Tok::RPAREN)) return std::make_unique<CallExpr>(token.text, std::vector<std::unique_ptr<ExprNode>>{});
+
+            std::vector<std::unique_ptr<ExprNode>> args;
+            do{
+                args.push_back(parse_expression());
+            }while(match(Tok::COMMA));
+            expect(Tok::RPAREN,"expect rparen in parameters list");
+            return std::make_unique<CallExpr>(token.text, std::move(args));
+        }
         return std::make_unique<IdentifierNode>(token.text);
     }
     default:
@@ -219,13 +230,21 @@ std::unique_ptr<BlockStatement> Parser::parse_block(){
 
 std::vector<Param> Parser::parse_parameters(){
     std::vector<Param> params;
+    std::unordered_set<std::string> seen;
     if(peek().type == Tok::RPAREN){
         return params; // No parameters
     }
     do {
         expect(Tok::KW_INT, "Expected 'int' in parameter declaration");
         const Token& name_token = expect(Tok::IDENT, "Expected parameter name");
-        params.push_back({name_token.text, TypeKind::INT});
+        if(seen.count(name_token.text)){
+            throw std::runtime_error(
+                "duplicate parameter '" + name_token.text +
+                "' at line " + std::to_string(name_token.line_no)
+            );
+        }
+        seen.insert(name_token.text);
+        params.push_back({name_token.text, std::make_unique<IntType>()});
     } while(match(Tok::COMMA));
     return params;
 }
@@ -240,7 +259,7 @@ std::unique_ptr<FunctionNode> Parser::parse_function(){
     expect(Tok::LCURLY, "Expected '{' at the beginning of function body");
     std::unique_ptr<BlockStatement> body = parse_block();
     expect(Tok::RCURLY, "Expected '}' at the end of function body");
-    return std::make_unique<FunctionNode>(func_name, TypeKind::INT, std::move(params), std::move(body));
+    return std::make_unique<FunctionNode>(func_name, std::make_unique<IntType>(), std::move(params), std::move(body));
 }
 
 std::unique_ptr<ProgramNode> Parser::parse(){
@@ -304,6 +323,22 @@ void CodeGen::gen_expr(const ExprNode* node){
         gen_identifier(iden);
     } else if(auto assi = dynamic_cast<const AssignmentExpr*>(node)){
         gen_assignment(assi);
+    } else if(const CallExpr* func = dynamic_cast<const CallExpr*>(node)){
+        for(const std::unique_ptr<ExprNode>& arg : func->args){
+            gen_expr(arg.get());
+        }
+        for(int i = static_cast<int>(func->args.size()) - 1; i >= 0; --i){
+            emit("lw a" + std::to_string(i) + ", 0(sp)");
+            emit("addi sp, sp, 4");
+        }
+        
+        emit("addi sp, sp, -4");
+        emit("sw ra, 0(sp)");
+        emit("call " + func->name);
+        emit("lw ra, 0(sp)");
+        emit("addi sp, sp, 4");
+        emit("addi sp, sp, -4");
+        emit("sw a0, 0(sp)");
     }
     else {
         throw std::runtime_error("unknown expression node");
@@ -315,11 +350,7 @@ void CodeGen::gen_return(const ReturnStatement* node){
     emit("lw a0, 0(sp)");
     emit("addi sp, sp, 4");
 
-    emit("lw s0, -4(s0)");
-    emit("addi sp, sp, " + std::to_string(frame_size));
-
-    emit("li a7, 10");
-    emit("ecall");
+    emit("j " + current_epilogue);
 }
 
 void CodeGen::gen_statement(const StatementNode* node){
@@ -349,22 +380,42 @@ void CodeGen::gen_block(const BlockStatement* node){
     exit_scope();
 }
 
+int CodeGen::count_params_with_size(const FunctionNode* funct){
+    return static_cast<int>(funct->params.size()) * 4;
+}
+
 void CodeGen::gen_function(const FunctionNode* node){
     //emit(".globl " + node->name);
     scope_stack.clear();
-    next_offset = -8;
+    next_offset = -12;
     frame_size = calculate_frame_size(node);
+    current_epilogue = new_label(".L_epilogue_");
     emit(node->name + ":");
     emit("addi sp, sp, " + std::to_string(-frame_size));
     emit("sw s0, " + std::to_string(frame_size - 4) + "(sp)");
+    emit("sw ra, " + std::to_string(frame_size - 8) + "(sp)");
     emit("addi s0, sp, " + std::to_string(frame_size));
     enter_scope();
+    for(size_t i=0;i<node->params.size();++i){
+        emit("sw a"+std::to_string(i)+", "+std::to_string(next_offset)+"(s0)");
+        scope_stack.back()[node->params[i].name] = next_offset;
+        next_offset -= 4;
+    }
     gen_block(node->body.get());
     exit_scope();
+    emit(current_epilogue + ":");
+    emit("lw ra, " + std::to_string(-8) + "(s0)");
+    emit("lw s0, " + std::to_string(-4) + "(s0)");
+    emit("addi sp, sp, " + std::to_string(frame_size));
+    emit("ret");
 }
 
 void CodeGen::gen_program(const ProgramNode* node) {
     //emit(".text");
+    emit("_start:");
+    emit("call main");
+    emit("li a7, 10");
+    emit("ecall");
     for (const std::unique_ptr<FunctionNode>& func_ptr : node->functions) {
         gen_function(func_ptr.get());
     }

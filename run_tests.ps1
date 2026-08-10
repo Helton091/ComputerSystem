@@ -32,7 +32,15 @@ $tests = @(
     @{ name = "test_while3"; expect = -2 },
     @{ name = "test_while4"; expect = 25 },
     @{ name = "test_while5"; expect = 5 },
-    @{ name = "test_while6"; expect = 5 }
+    @{ name = "test_while6"; expect = 5 },
+    @{ name = "test_func1";  expect = 2 },
+    @{ name = "test_func2";  expect = 6 },
+    @{ name = "test_func3";  expect = 5 },
+    @{ name = "test_func4";  expect = 10 },
+    @{ name = "test_func5";  expect = 6 },
+    @{ name = "test_func6";  expect = 55 },
+    @{ name = "test_func7";  expect = 7 },
+    @{ name = "test_func8";  expect = 6 }
 )
 $all_pass = $true
 

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <memory>
+#include <unordered_set>
 enum class Tok {
     
     IDENT, NUMBER, EOF_TOK,
@@ -36,6 +37,24 @@ struct Token{
     int col_no;
 };
 
+class Type{
+public:
+    virtual ~Type() = default;
+    virtual int size() const = 0;
+    virtual std::string to_string() = 0;
+};
+
+class IntType : public Type{
+public:
+    int size() const override{return 4;}
+    std::string to_string() override{return "int";}
+};
+
+struct Param{
+    std::string name;
+    std::unique_ptr<Type> type;
+};
+
 class ASTNode{
 public:
     virtual ~ASTNode() = default;
@@ -45,6 +64,19 @@ public:
 using ASTNodePtr = std::unique_ptr<ASTNode>;
 
 class ExprNode : public ASTNode{};
+class CallExpr : public ExprNode{
+public:
+    std::string name;
+    std::vector<std::unique_ptr<ExprNode>> args;
+    CallExpr(std::string n, std::vector<std::unique_ptr<ExprNode>> a)
+        : name(std::move(n)), args(std::move(a)) {}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "CallExpr(" << name << ")\n";
+        for (auto& arg : args) {
+            arg->dump(indent + 2);
+        }
+    }
+};
 
 class NumberNode : public ExprNode{
 public:
@@ -195,29 +227,21 @@ public:
     }
 };
 
-enum class TypeKind {
-    INT, VOID
-};
-
-struct Param{
-    std::string name;
-    TypeKind type;
-};
 
 class FunctionNode : public ASTNode{
 public:
     std::string name;
-    TypeKind return_type;
+    std::unique_ptr<Type> return_type;
     std::vector<Param> params;
     std::unique_ptr<BlockStatement> body;
-    FunctionNode(const std::string& n, TypeKind ret_type, std::vector<Param> p, std::unique_ptr<BlockStatement> b)
-        : name(n), return_type(ret_type), params(std::move(p)), body(std::move(b)) {}
+    FunctionNode(const std::string& n, std::unique_ptr<Type> ret_type, std::vector<Param> p, std::unique_ptr<BlockStatement> b)
+        : name(n), return_type(std::move(ret_type)), params(std::move(p)), body(std::move(b)) {}
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "FunctionNode(" << name << ")\n";
-        std::cout << std::string(indent + 2, ' ') << "ReturnType: " << static_cast<int>(return_type) << "\n";
+        std::cout << std::string(indent + 2, ' ') << "ReturnType: " << return_type->to_string() << "\n";
         std::cout << std::string(indent + 2, ' ') << "Parameters:\n";
         for(const auto& param : params){
-            std::cout << std::string(indent + 4, ' ') << "Param(" << param.name << ", " << static_cast<int>(param.type) << ")\n";
+            std::cout << std::string(indent + 4, ' ') << "Param(" << param.name << ", " << param.type->to_string() << ")\n";
         }
         std::cout << std::string(indent + 2, ' ') << "Body:\n";
         body->dump(indent + 4);
@@ -292,12 +316,15 @@ private:
     std::vector<std::string> instructions;
     std::vector<std::unordered_map<std::string, int>> scope_stack; //ralative to s0, aka, fp
     int count_decl_with_size(const BlockStatement* block);
-    int calculate_frame_size(const FunctionNode* funct){return count_decl_with_size(funct->body.get()) + 4;}
+    int count_params_with_size(const FunctionNode* funct);
+    int calculate_frame_size(const FunctionNode* funct){return count_params_with_size(funct) + count_decl_with_size(funct->body.get()) + 8;}
+    //8 means s0(4) + ra(4)
     int lookup_variable(const std::string& name);
     void enter_scope(){scope_stack.push_back(std::unordered_map<std::string, int>{});}
     void exit_scope(){if(!scope_stack.empty()) scope_stack.pop_back();}
     int frame_size = 0;
     int next_offset = -8;
+    std::string current_epilogue;
 
     void emit(const std::string& line){instructions.push_back(line);}
     
