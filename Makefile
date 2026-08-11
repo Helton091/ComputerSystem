@@ -21,8 +21,9 @@ compiler.exe: main.cpp compiler.cpp compiler.hpp \
               lexer.cpp lexer.hpp \
               parser.cpp parser.hpp \
               codegen.cpp codegen.hpp \
+              ir.cpp ir.hpp \
               ast.hpp token.hpp
-	$(CXX) $(CXXFLAGS) main.cpp compiler.cpp lexer.cpp parser.cpp codegen.cpp -o $@
+	$(CXX) $(CXXFLAGS) main.cpp compiler.cpp lexer.cpp parser.cpp codegen.cpp ir.cpp -o $@
 
 # ===== 清理 =====
 clean:
