@@ -1,164 +1,132 @@
 #pragma once
-#include <string>
-#include <vector>
-#include <memory>
-#include <unordered_map>
-#include <iostream>
-#include "ast.hpp"
-
-namespace IR {
-
-enum class IRType {
-    INT,
-    // 预留：FLOAT, VOID, PTR
-};
-
-enum class Opcode {
-    ADD, SUB, MUL, DIV, REM,
-    LT, GT, LE, GE, EQ, NE,
-    NEG,          // 一元负
-    ASSIGN,       // 复制：result = lhs
-    LOAD, STORE,  // 内存操作（预留）
-    PARAM,        // 函数参数准备：param lhs
-    CALL,         // result = call lhs(, rhs.i_val 为参数个数)
-    RET,          // return lhs
-    LABEL,        // 块内标签（预留，基本块 label 已够用）
-    JMP,          // 无条件跳转：jmp jump_label
-    JZ,           // 条件为 0 跳转：jz lhs, jump_label
-    JNZ,          // 条件非 0 跳转：jnz lhs, jump_label
-    PHI,          // 预留，P4 不实现
-};
-
-// ---------- Operand ----------
-
-struct Operand {
-    enum Kind { IMM, VAR, LABEL } kind;
-    IRType type = IRType::INT;
-
-    std::string name;   // VAR / LABEL 使用
-    int i_val = 0;      // IMM 使用
-
-    Operand() = default;
-
-    static Operand imm(int v, IRType t = IRType::INT);
-    static Operand var(const std::string& n, IRType t = IRType::INT);
-    static Operand label(const std::string& n);
-
-    bool is_imm() const;
-    bool is_var() const;
-    bool is_label() const;
-};
-
-// ---------- Param ----------
-
-struct Param {
-    std::string name;
-    IRType type = IRType::INT;
-};
-
-// ---------- Instruction ----------
-
-struct Instruction {
-    Opcode op;
-    IRType type = IRType::INT;
-
-    Operand result;      // 结果（可能为空）
-    Operand lhs;         // 左操作数 / 主要操作数
-    Operand rhs;         // 右操作数 / 辅助操作数（可能为空）
-
-    std::string jump_label;  // JMP / JZ / JNZ 的跳转目标
-    std::string comment;     // 调试用注释
-
-    explicit Instruction(Opcode o = Opcode::ADD);
-};
-
-// ---------- BasicBlock ----------
-
-struct BasicBlock {
-    std::string label;
-    std::vector<Instruction> insts;
-
-    // 跳转目标统一用 label 字符串，不受 block 增删/重排影响。
-    // 实际跳转目标由最后一条 terminator 指令的 jump_label 决定，
-    // 这里保留两个字段作为辅助缓存，方便 CFG 分析。
-    std::string next_label;   // 顺序跳转 / fall-through
-    std::string branch_label; // 条件分支
-
-    void dump(std::ostream& out, int indent = 0) const;
-};
-
-// ---------- IRFunction ----------
-
-struct IRFunction {
-    std::string name;
-    std::vector<Param> params;
-    std::vector<Param> locals;
-
-    std::vector<std::unique_ptr<BasicBlock>> blocks;
-    std::unordered_map<std::string, size_t> label_to_idx;
-    size_t entry_idx = 0;
-
-    // 根据 blocks 重建 label -> index 映射
-    void build_label_map();
-
-    BasicBlock* find_block(const std::string& label);
-    const BasicBlock* find_block(const std::string& label) const;
-
-    void dump(std::ostream& out) const;
-};
-
-// ---------- IRProgram ----------
-
-struct IRProgram {
-    std::vector<std::unique_ptr<IRFunction>> functions;
-
-    void dump(std::ostream& out) const;
-};
-
-class AST2IR{
+#include<string>
+#include<vector>
+#include<memory>
+#include<unordered_map>
+#include<ostream>
+#include<utility>
+#include<iostream>
+#include<stdexcept>
+namespace IR{
+class Type{
 public:
-    std::unique_ptr<IRProgram> translate(ProgramNode* node);
+    virtual ~Type() = default;
+    virtual int size() const = 0;
+    virtual std::string to_string() const = 0;
+};
+
+class IntType : public Type{
+public:
+    static IntType* get(){static IntType i; return &i;}
+    int size() const override{return 4;}
+    std::string to_string() const override{return "i32";}
+private:
+    IntType() = default;
+};
+
+class VoidType : public Type{
+public:
+    static VoidType* get(){static VoidType v; return &v;}
+    int size() const override{return 0;}
+    std::string to_string() const override{return "void";}
+private:
+    VoidType() = default;
+};
+
+enum class Opcode{
+    ALLOCA, LOAD, STORE,
+    ADD, SUB, MUL, DIV, REM, NEG,
+    LT, GT, LE, GE, EQ, NE,
+    BR, JMP, RET,
+    CALL,
+    PHI
+};
+
+struct User;
+struct BasicBlock;
+struct Function;
+
+struct Value{
+    Type* type;
+    std::string name;
+    std::vector<User*> users;
+    Value(Type* t, std::string n = "") : type(t), name(std::move(n)) {}
+    virtual ~Value() = default;
+
+    void add_use(User* u) { users.push_back(u); }
+    void remove_use(User* u); //remove ONCE
+    void replace_all_uses_with(Value* v);
+};
+
+struct User : Value{
+    std::vector<Value*> operands;
+    User(Type* t, std::string n = "") : Value(t, std::move(n)) {}
+    ~User() override { drop_operands(); }
+
+    void add_operand(Value* v);
+    void drop_operands();  //remove all
+};
+
+struct ConstantInt : Value {
+    int i_val;
+    explicit ConstantInt(int v) : Value(IntType::get()), i_val(v) {}
+};
+
+struct Argument : Value{
+    int arg_no;
+    explicit Argument(int no)
+        : Value(IntType::get(), "arg" + std::to_string(no)), arg_no(no) {}
+};
+
+struct Instruction : User{
+    Opcode op;
+    BasicBlock* parent = nullptr;
+    Instruction(Opcode o, Type* t, std::string n = "")
+        : User(t, std::move(n)), op(o) {}
+    void erase_from_parent();
+};
+
+struct BasicBlock : Value{
+    std::vector<std::unique_ptr<Instruction>> insts;
+    Function* parent = nullptr;
+    explicit BasicBlock(std::string n)
+        : Value(VoidType::get(), std::move(n)) {}
+    Instruction* add_inst(std::unique_ptr<Instruction> inst);
+    bool is_terminated() const;
+};
+
+struct Function : Value{
+    std::vector<std::unique_ptr<Argument>> args;
+    std::vector<std::unique_ptr<BasicBlock>> blocks;
+    BasicBlock* entry = nullptr;
+    explicit Function(std::string n)
+        : Value(VoidType::get(), std::move(n)) {}
+    ~Function(){
+        for (auto& block : blocks)
+            for (auto& inst : block->insts)
+                inst->drop_operands();
+    }
+    Argument* add_arg();                       
+    BasicBlock* add_block(const std::string& name);
+};
+
+struct Module {
+    
+    Function* add_function(const std::string& name);
+    Function* find_function(const std::string& name) const;
+    ConstantInt* get_const(int v);
+
+    void dump(std::ostream& out) const;
 
 private:
-    std::unique_ptr<IRProgram> program_;
-    IRFunction* current_func_ = nullptr;
-    BasicBlock* current_block_ = nullptr;
-    int tmp_counter_ = 0;
-    int label_counter_ = 0;
-    std::vector<std::unordered_map<std::string,std::string>> scope_stack_;
-
-    // ===== 顶层结构 =====
-    void gen_program(const ProgramNode* node);
-    std::unique_ptr<IRFunction> gen_function(const FunctionNode* node);
-
-    // ===== 语句翻译 =====
-    void gen_block(const BlockStatement* node);
-    void gen_statement(const StatementNode* node);
-    void gen_decl(const DeclStmt* node);
-    void gen_expr_stmt(const ExprStmt* node);
-    void gen_return(const ReturnStatement* node);
-    void gen_if(const IfStmt* node);
-    void gen_while(const WhileStmt* node);
-
-    // ===== 表达式翻译 =====
-    Operand gen_expr(const ExprNode* node);
-    Operand gen_binary(const BinaryExpr* node);
-    Operand gen_unary(const UnaryExpr* node);
-    Operand gen_call(const CallExpr* node);
-    Operand gen_identifier(const IdentifierNode* node);
-    Operand gen_assignment(const AssignmentExpr* node);
-    Operand gen_number(const NumberNode* node);
-
-    // ===== 辅助函数 =====
-    void enter_scope();
-    void exit_scope();
-    std::string lookup_var(const std::string& name) const;
-    std::string declare_var(const std::string& name);
-    std::string new_temp();
-    std::string new_label(const std::string& prefix);
-    BasicBlock* new_block(const std::string& prefix);
-    void emit(const Instruction& inst);
-    Opcode map_op(Tok op) const;
+    std::vector<std::unique_ptr<ConstantInt>> const_pool_; 
+    std::unordered_map<int, ConstantInt*> const_map_;
+    std::vector<std::unique_ptr<Function>> functions;        
 };
 
-} // namespace IR
+Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
+                       const std::string& name,
+                       std::initializer_list<Value*> operands = {});
+
+
+} //namespace IR

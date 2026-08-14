@@ -2,578 +2,306 @@
 
 namespace IR {
 
-namespace detail {
-
-std::string operand_to_string(const Operand& op) {
-    switch (op.kind) {
-        case Operand::IMM:   return std::to_string(op.i_val);
-        case Operand::VAR:   return op.name;
-        case Operand::LABEL: return op.name;
-    }
-    return "?";
-}
-
-std::string opcode_to_string(Opcode op) {
-    switch (op) {
-        case Opcode::ADD:    return "add";
-        case Opcode::SUB:    return "sub";
-        case Opcode::MUL:    return "mul";
-        case Opcode::DIV:    return "div";
-        case Opcode::REM:    return "rem";
-        case Opcode::LT:     return "lt";
-        case Opcode::GT:     return "gt";
-        case Opcode::LE:     return "le";
-        case Opcode::GE:     return "ge";
-        case Opcode::EQ:     return "eq";
-        case Opcode::NE:     return "ne";
-        case Opcode::NEG:    return "neg";
-        case Opcode::ASSIGN: return "mov";
-        case Opcode::LOAD:   return "load";
-        case Opcode::STORE:  return "store";
-        case Opcode::PARAM:  return "param";
-        case Opcode::CALL:   return "call";
-        case Opcode::RET:    return "ret";
-        case Opcode::LABEL:  return "label";
-        case Opcode::JMP:    return "jmp";
-        case Opcode::JZ:     return "jz";
-        case Opcode::JNZ:    return "jnz";
-        case Opcode::PHI:    return "phi";
-    }
-    return "?";
-}
-
-} // namespace detail
-
-// ---------- Operand ----------
-
-Operand Operand::imm(int v, IRType t) {
-    Operand o;
-    o.kind = IMM;
-    o.type = t;
-    o.i_val = v;
-    return o;
-}
-
-Operand Operand::var(const std::string& n, IRType t) {
-    Operand o;
-    o.kind = VAR;
-    o.type = t;
-    o.name = n;
-    return o;
-}
-
-Operand Operand::label(const std::string& n) {
-    Operand o;
-    o.kind = LABEL;
-    o.name = n;
-    return o;
-}
-
-bool Operand::is_imm() const { return kind == IMM; }
-bool Operand::is_var() const { return kind == VAR; }
-bool Operand::is_label() const { return kind == LABEL; }
-
-// ---------- Instruction ----------
-
-Instruction::Instruction(Opcode o) : op(o) {}
-
-// ---------- BasicBlock ----------
-
-void BasicBlock::dump(std::ostream& out, int indent) const {
-    out << std::string(indent, ' ') << label << ":\n";
-    for (const auto& inst : insts) {
-        out << std::string(indent + 2, ' ');
-
-        switch (inst.op) {
-            case Opcode::ADD:
-            case Opcode::SUB:
-            case Opcode::MUL:
-            case Opcode::DIV:
-            case Opcode::REM:
-            case Opcode::LT:
-            case Opcode::GT:
-            case Opcode::LE:
-            case Opcode::GE:
-            case Opcode::EQ:
-            case Opcode::NE:
-                out << detail::operand_to_string(inst.result)
-                    << " = " << detail::opcode_to_string(inst.op)
-                    << " " << detail::operand_to_string(inst.lhs)
-                    << ", " << detail::operand_to_string(inst.rhs);
-                break;
-
-            case Opcode::NEG:
-                out << detail::operand_to_string(inst.result)
-                    << " = neg " << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::ASSIGN:
-                out << detail::operand_to_string(inst.result)
-                    << " = " << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::LOAD:
-                out << detail::operand_to_string(inst.result)
-                    << " = load " << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::STORE:
-                out << "store " << detail::operand_to_string(inst.lhs)
-                    << ", " << detail::operand_to_string(inst.rhs);
-                break;
-
-            case Opcode::PARAM:
-                out << "param " << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::CALL:
-                if (!inst.result.name.empty()) {
-                    out << detail::operand_to_string(inst.result) << " = ";
-                }
-                out << "call " << detail::operand_to_string(inst.lhs);
-                if (inst.rhs.is_imm() && inst.rhs.i_val > 0) {
-                    out << ", " << inst.rhs.i_val;
-                }
-                break;
-
-            case Opcode::RET:
-                out << "ret " << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::LABEL:
-                out << "." << detail::operand_to_string(inst.lhs);
-                break;
-
-            case Opcode::JMP:
-                out << "jmp " << inst.jump_label;
-                break;
-
-            case Opcode::JZ:
-                out << "jz " << detail::operand_to_string(inst.lhs)
-                    << ", " << inst.jump_label;
-                break;
-
-            case Opcode::JNZ:
-                out << "jnz " << detail::operand_to_string(inst.lhs)
-                    << ", " << inst.jump_label;
-                break;
-
-            case Opcode::PHI:
-                out << detail::operand_to_string(inst.result) << " = phi(...)";
-                break;
+void Value::remove_use(User* u){
+    for(auto it = users.begin(); it != users.end(); ++it){
+        if(*it == u){
+            users.erase(it);
+            return;
         }
+    }
+    throw std::runtime_error("when remove user" + u->name + " in " + name + ", didn't find " + u->name);
+}
 
-        if (!inst.comment.empty()) {
-            out << "  # " << inst.comment;
+void Value::replace_all_uses_with(Value* v){
+    for(User* u : users){
+        for(Value*& op : u->operands){
+            if(op == this){
+                op = v;
+            }
         }
-        out << "\n";
+    }
+    v->users.insert(v->users.end(),users.begin(),users.end());
+    users.clear();
+}
+
+void User::add_operand(Value* v){
+    operands.push_back(v);
+    if(v) v->add_use(this);
+}
+
+void User::drop_operands(){
+    for(Value* v : operands){
+        if(v) v->remove_use(this);
+    }
+    operands.clear();
+}
+
+void Instruction::erase_from_parent(){
+    if(!parent) return;
+    if(!users.empty()) throw std::runtime_error("erase_from_parent: instruction still has users: " + name);
+    std::vector<std::unique_ptr<Instruction>>& insts = parent->insts;
+    for(auto it = insts.begin();it != insts.end(); ++it){
+        if(it->get() == this){
+            insts.erase(it);
+            return;
+        }
     }
 }
 
-// ---------- IRFunction ----------
-
-void IRFunction::build_label_map() {
-    label_to_idx.clear();
-    for (size_t i = 0; i < blocks.size(); ++i) {
-        label_to_idx[blocks[i]->label] = i;
+bool BasicBlock::is_terminated() const{
+    if(insts.empty()) return false;
+    switch(insts.back()->op){
+    case Opcode::BR:
+    case Opcode::JMP:
+    case Opcode::RET:
+        return true;
+    default:
+        return false;
     }
 }
 
-BasicBlock* IRFunction::find_block(const std::string& label) {
-    auto it = label_to_idx.find(label);
-    if (it != label_to_idx.end()) {
-        return blocks[it->second].get();
+Instruction* BasicBlock::add_inst(std::unique_ptr<Instruction> inst){
+    if(is_terminated()) throw std::runtime_error("cannot add a new instruction to a terminated block");
+    inst->parent = this;
+    insts.push_back(std::move(inst));
+    return insts.back().get();
+}
+
+Argument* Function::add_arg(){
+    args.push_back(std::make_unique<Argument>(args.size()));
+    return args.back().get();
+}
+
+BasicBlock* Function::add_block(const std::string& name){
+    std::unique_ptr<BasicBlock> new_block = std::make_unique<BasicBlock>(name);
+    new_block->parent = this;
+    if(blocks.empty()) entry = new_block.get();
+    blocks.push_back(std::move(new_block));
+    return blocks.back().get();
+}
+
+Function* Module::add_function(const std::string& name){
+    if(find_function(name)) throw std::runtime_error("duplicated function " + name);
+    functions.push_back(std::make_unique<Function>(name));
+    return functions.back().get();
+}
+
+Function* Module::find_function(const std::string& name) const{
+    for(auto it = functions.begin(); it != functions.end();++it){
+        if(name == it->get()->name) return it->get();
     }
     return nullptr;
 }
 
-const BasicBlock* IRFunction::find_block(const std::string& label) const {
-    auto it = label_to_idx.find(label);
-    if (it != label_to_idx.end()) {
-        return blocks[it->second].get();
+ConstantInt* Module::get_const(int v){
+    auto it = const_map_.find(v);
+    if(it == const_map_.end()){
+        const_pool_.push_back(std::make_unique<ConstantInt>(v));
+        const_map_[v] = const_pool_.back().get();
     }
-    return nullptr;
+    return const_map_[v];
 }
 
-void IRFunction::dump(std::ostream& out) const {
-    out << "func " << name << "(";
-    for (size_t i = 0; i < params.size(); ++i) {
-        if (i > 0) out << ", ";
-        out << params[i].name;
-    }
-    out << "):\n";
+// ============================================================
+// 打印（文本格式即测试比对基准，见报告第 6 章）
+// ============================================================
 
-    for (const auto& bb : blocks) {
-        bb->dump(out, 2);
+static std::string op_str(Opcode op){
+    switch(op){
+    case Opcode::ALLOCA: return "alloca";
+    case Opcode::LOAD:   return "load";
+    case Opcode::STORE:  return "store";
+    case Opcode::ADD:    return "add";
+    case Opcode::SUB:    return "sub";
+    case Opcode::MUL:    return "mul";
+    case Opcode::DIV:    return "div";
+    case Opcode::REM:    return "rem";
+    case Opcode::NEG:    return "neg";
+    case Opcode::LT:     return "lt";
+    case Opcode::GT:     return "gt";
+    case Opcode::LE:     return "le";
+    case Opcode::GE:     return "ge";
+    case Opcode::EQ:     return "eq";
+    case Opcode::NE:     return "ne";
+    case Opcode::BR:     return "br";
+    case Opcode::JMP:    return "jmp";
+    case Opcode::RET:    return "ret";
+    case Opcode::CALL:   return "call";
+    case Opcode::PHI:    return "phi";
     }
+    return "?";
 }
 
-// ---------- IRProgram ----------
-
-void IRProgram::dump(std::ostream& out) const {
-    for (const auto& func : functions) {
-        func->dump(out);
-        out << "\n";
-    }
+// 操作数在指令里的样子：常量印数字，函数印 @名，其余印 %名
+static std::string operand_str(const Value* v){
+    if(auto* c = dynamic_cast<const ConstantInt*>(v))
+        return std::to_string(c->i_val);
+    if(auto* f = dynamic_cast<const Function*>(v))
+        return "@" + f->name;
+    return "%" + v->name;
 }
 
-std::unique_ptr<IRProgram> AST2IR::translate(ProgramNode* node) {
-    program_ = std::make_unique<IRProgram>();
-    gen_program(node);
-    return std::move(program_);
-}
+static void dump_inst(const Instruction& inst, std::ostream& out){
+    out << "  ";
+    if(inst.type != VoidType::get())
+        out << "%" << inst.name << " = ";
 
-void AST2IR::gen_program(const ProgramNode* node) {
-    for (const auto& func_node : node->functions) {
-        program_->functions.push_back(std::move(gen_function(func_node.get())));
-    }
-}
-
-std::unique_ptr<IRFunction> AST2IR::gen_function(const FunctionNode* node) {
-    auto ir_func = std::make_unique<IRFunction>();
-    ir_func->name = node->name;
-
-    // 每个函数独立的计数器
-    tmp_counter_ = 0;
-    label_counter_ = 0;
-
-    // 参数进入当前作用域
-    enter_scope();
-    for (const auto& param : node->params) {
-        ir_func->params.push_back({param.name, IRType::INT});
-        scope_stack_.back()[param.name] = param.name;
-    }
-
-    // 创建入口基本块
-    auto entry = std::make_unique<BasicBlock>();
-    entry->label = node->name + ".entry";
-    BasicBlock* entry_ptr = entry.get();
-    ir_func->blocks.push_back(std::move(entry));
-    ir_func->entry_idx = 0;
-
-    // 设置当前翻译上下文
-    current_func_ = ir_func.get();
-    current_block_ = entry_ptr;
-
-    // 翻译函数体
-    gen_block(node->body.get());
-
-    // 兜底：如果最后一条指令不是 terminator，补一个 ret 0
-    if (current_block_->insts.empty() ||
-        (current_block_->insts.back().op != Opcode::RET &&
-         current_block_->insts.back().op != Opcode::JMP &&
-         current_block_->insts.back().op != Opcode::JZ &&
-         current_block_->insts.back().op != Opcode::JNZ)) {
-        Instruction ret_inst(Opcode::RET);
-        ret_inst.lhs = Operand::imm(0);
-        emit(ret_inst);
-    }
-
-    // 构建 label -> index 映射，方便后续查找
-    ir_func->build_label_map();
-
-    // 退出参数作用域
-    exit_scope();
-
-    return ir_func;
-}
-
-Operand AST2IR::gen_expr(const ExprNode* node) {
-    if (auto num = dynamic_cast<const NumberNode*>(node)) {
-        return gen_number(num);
-    }
-    if (auto id = dynamic_cast<const IdentifierNode*>(node)) {
-        return gen_identifier(id);
-    }
-    if (auto bin = dynamic_cast<const BinaryExpr*>(node)) {
-        return gen_binary(bin);
-    }
-    if (auto unary = dynamic_cast<const UnaryExpr*>(node)) {
-        return gen_unary(unary);
-    }
-    if (auto call = dynamic_cast<const CallExpr*>(node)) {
-        return gen_call(call);
-    }
-    if (auto assign = dynamic_cast<const AssignmentExpr*>(node)) {
-        return gen_assignment(assign);
-    }
-    throw std::runtime_error("unknown expression node");
-}
-
-
-Operand AST2IR::gen_number(const NumberNode* node){
-    return Operand::imm(node->value);
-}
-
-Operand AST2IR::gen_identifier(const IdentifierNode* node) {
-    return Operand::var(lookup_var(node->name));
-}
-
-Operand AST2IR::gen_binary(const BinaryExpr* node) {
-    Operand left = gen_expr(node->left.get());
-    Operand right = gen_expr(node->right.get());
-
-    Operand result = Operand::var(new_temp());
-
-    Instruction inst(map_op(node->op));
-    inst.type = IRType::INT;
-    inst.result = result;
-    inst.lhs = left;
-    inst.rhs = right;
-    emit(inst);
-
-    return result;
-}
-
-Operand AST2IR::gen_unary(const UnaryExpr* node) {
-    Operand operand = gen_expr(node->operand.get());
-
-    switch (node->op) {
-        case Tok::SUB: {
-            Operand result = Operand::var(new_temp());
-            Instruction inst(Opcode::NEG);
-            inst.result = result;
-            inst.lhs = operand;
-            emit(inst);
-            return result;
+    switch(inst.op){
+    case Opcode::ALLOCA:
+        out << "alloca " << inst.type->to_string();
+        break;
+    case Opcode::LOAD:
+        out << "load " << inst.type->to_string() << ", "
+            << inst.type->to_string() << "* " << operand_str(inst.operands[0]);
+        break;
+    case Opcode::STORE:
+        out << "store " << inst.operands[0]->type->to_string() << " "
+            << operand_str(inst.operands[0]) << ", "
+            << inst.operands[0]->type->to_string() << "* "
+            << operand_str(inst.operands[1]);
+        break;
+    case Opcode::BR:
+        out << "br i32 " << operand_str(inst.operands[0])
+            << ", label %" << inst.operands[1]->name
+            << ", label %" << inst.operands[2]->name;
+        break;
+    case Opcode::JMP:
+        out << "jmp label %" << inst.operands[0]->name;
+        break;
+    case Opcode::RET:
+        out << "ret " << inst.operands[0]->type->to_string() << " "
+            << operand_str(inst.operands[0]);
+        break;
+    case Opcode::CALL:
+        out << "call " << inst.type->to_string() << " "
+            << operand_str(inst.operands[0]) << "(";
+        for(size_t i = 1; i < inst.operands.size(); ++i){
+            if(i > 1) out << ", ";
+            out << inst.operands[i]->type->to_string() << " "
+                << operand_str(inst.operands[i]);
         }
-        default:
-            throw std::runtime_error("unsupported unary operator");
+        out << ")";
+        break;
+    default:
+        // 算术 / 比较：op type lhs, rhs；NEG 只有一个操作数
+        out << op_str(inst.op) << " " << inst.type->to_string()
+            << " " << operand_str(inst.operands[0]);
+        if(inst.operands.size() == 2)
+            out << ", " << operand_str(inst.operands[1]);
+        break;
     }
+    out << "\n";
 }
 
-Operand AST2IR::gen_assignment(const AssignmentExpr* node){
-    Operand rhs = gen_expr(node->rhs.get());
-    Operand lhs = Operand::var(lookup_var(node->lhs->name));
-    Instruction inst(Opcode::ASSIGN);
-    inst.result = lhs;
-    inst.lhs = rhs;
-    emit(inst);
-
-    return lhs;
-}
-
-Operand AST2IR::gen_call(const CallExpr* node) {
-    // 1. 翻译所有参数
-    std::vector<Operand> args;
-    for (const auto& arg : node->args) {
-        args.push_back(gen_expr(arg.get()));
-    }
-
-    // 2. 按顺序 emit param
-    for (const auto& arg : args) {
-        Instruction param_inst(Opcode::PARAM);
-        param_inst.lhs = arg;
-        emit(param_inst);
-    }
-
-    // 3. 创建结果临时变量
-    Operand result = Operand::var(new_temp());
-
-    // 4. emit call
-    Instruction call_inst(Opcode::CALL);
-    call_inst.result = result;
-    call_inst.lhs = Operand::label(node->name);
-    call_inst.rhs = Operand::imm(static_cast<int>(args.size()));
-    emit(call_inst);
-
-    return result;
-}
-
-void AST2IR::gen_statement(const StatementNode* node) {
-    if (auto ret = dynamic_cast<const ReturnStatement*>(node)) {
-        gen_return(ret);
-    } else if (auto decl = dynamic_cast<const DeclStmt*>(node)) {
-        gen_decl(decl);
-    } else if (auto expr = dynamic_cast<const ExprStmt*>(node)) {
-        gen_expr_stmt(expr);
-    } else if (auto blk = dynamic_cast<const BlockStatement*>(node)) {
-        gen_block(blk);
-    } else if (auto ifs = dynamic_cast<const IfStmt*>(node)) {
-        gen_if(ifs);
-    } else if (auto whs = dynamic_cast<const WhileStmt*>(node)) {
-        gen_while(whs);
-    } else {
-        throw std::runtime_error("unknown statement");
-    }
-}
-
-void AST2IR::gen_block(const BlockStatement* node) {
-    enter_scope();
-    for (const auto& stmt : node->statements) {
-        gen_statement(stmt.get());
-    }
-    exit_scope();
-}
-
-void AST2IR::gen_decl(const DeclStmt* node) {
-    std::string ir_name = declare_var(node->name);
-
-    Instruction inst(Opcode::ASSIGN);
-    inst.result = Operand::var(ir_name);
-
-    if (node->init) {
-        inst.lhs = gen_expr(node->init.get());
-    } else {
-        inst.lhs = Operand::imm(0);
-    }
-    emit(inst);
-}
-
-void AST2IR::gen_expr_stmt(const ExprStmt* node) {
-    gen_expr(node->expr.get());
-}
-
-void AST2IR::gen_return(const ReturnStatement* node) {
-    Operand val = gen_expr(node->expr.get());
-    Instruction inst(Opcode::RET);
-    inst.lhs = val;
-    emit(inst);
-}
-
-void AST2IR::gen_if(const IfStmt* node) {
-    // 翻译条件表达式，结果在当前 block
-    Operand cond = gen_expr(node->cond.get());
-
-    // 创建三个新 block
-    BasicBlock* then_bb = new_block(".L_then");
-    BasicBlock* else_bb = new_block(".L_else");
-    BasicBlock* end_bb  = new_block(".L_end");
-
-    // 当前 block 加条件跳转
-    Instruction jz(Opcode::JZ);
-    jz.lhs = cond;
-    jz.jump_label = else_bb->label;
-    emit(jz);
-
-    Instruction jmp_then(Opcode::JMP);
-    jmp_then.jump_label = then_bb->label;
-    emit(jmp_then);
-
-    // 翻译 then 分支
-    current_block_ = then_bb;
-    gen_statement(node->then_branch.get());
-    Instruction jmp_end1(Opcode::JMP);
-    jmp_end1.jump_label = end_bb->label;
-    emit(jmp_end1);
-
-    // 翻译 else 分支
-    current_block_ = else_bb;
-    if (node->else_branch) {
-        gen_statement(node->else_branch.get());
-    }
-    Instruction jmp_end2(Opcode::JMP);
-    jmp_end2.jump_label = end_bb->label;
-    emit(jmp_end2);
-
-    // 后续语句在 end_block
-    current_block_ = end_bb;
-}
-
-void AST2IR::gen_while(const WhileStmt* node) {
-    BasicBlock* cond_bb = new_block(".L_while_cond");
-    BasicBlock* body_bb = new_block(".L_while_body");
-    BasicBlock* end_bb  = new_block(".L_while_end");
-
-    // 当前 block 先跳转到 cond
-    Instruction jmp_cond(Opcode::JMP);
-    jmp_cond.jump_label = cond_bb->label;
-    emit(jmp_cond);
-
-    // 翻译 cond
-    current_block_= cond_bb;
-    Operand cond = gen_expr(node->cond.get());
-    Instruction jz(Opcode::JZ);
-    jz.lhs = cond;
-    jz.jump_label = end_bb->label;
-    emit(jz);
-
-    Instruction jmp_body(Opcode::JMP);
-    jmp_body.jump_label = body_bb->label;
-    emit(jmp_body);
-
-    // 翻译 body
-    current_block_ = body_bb;
-    gen_statement(node->body.get());
-    Instruction jmp_back(Opcode::JMP);
-    jmp_back.jump_label = cond_bb->label;
-    emit(jmp_back);
-
-    // 后续语句
-    current_block_ = end_bb;
-}
-
-
-
-// ---------- 辅助函数 ----------
-
-void AST2IR::enter_scope() {
-    scope_stack_.push_back({});
-}
-
-void AST2IR::exit_scope() {
-    if (!scope_stack_.empty()) {
-        scope_stack_.pop_back();
-    }
-}
-
-std::string AST2IR::lookup_var(const std::string& name) const {
-    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
-        auto found = it->find(name);
-        if (found != it->end()) {
-            return found->second;
+void Module::dump(std::ostream& out) const{
+    for(const auto& func : functions){
+        out << "define i32 @" << func->name << "(";
+        for(size_t i = 0; i < func->args.size(); ++i){
+            if(i > 0) out << ", ";
+            out << "i32 %" << func->args[i]->name;
         }
+        out << ") {\n";
+        for(const auto& block : func->blocks){
+            out << block->name << ":\n";
+            for(const auto& inst : block->insts)
+                dump_inst(*inst, out);
+        }
+        out << "}\n\n";
     }
-    throw std::runtime_error("undefined variable: " + name);
 }
 
-std::string AST2IR::declare_var(const std::string& name) {
-    if (scope_stack_.empty()) {
-        throw std::runtime_error("declaration outside any scope: " + name);
+Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
+                       const std::string& name,
+                       std::initializer_list<Value*> operands){
+
+    std::unique_ptr<Instruction> new_inst = std::make_unique<Instruction>(op,type,name);
+    for(Value* operand : operands) new_inst->add_operand(operand);
+    switch(op){
+    case Opcode::ADD:
+    case Opcode::SUB:
+    case Opcode::MUL:
+    case Opcode::DIV:
+    case Opcode::REM:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there should be exactly 2 operand");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there operands' type must be equal");
+        if(type != operands[0]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM， the result's type must be equal to operands' type");
     }
-    auto& current_scope = scope_stack_.back();
-    if (current_scope.find(name) != current_scope.end()) {
-        throw std::runtime_error("redefined variable: " + name);
+    break;
+    case Opcode::LT:
+    case Opcode::GT:
+    case Opcode::LE:
+    case Opcode::GE:
+    case Opcode::EQ:
+    case Opcode::NE:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there should be exactly 2 operand");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there operands' type must be equal");
+        if(type != IntType::get()) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE， the result's type must be I32");
     }
-    current_scope[name] = name;
-    return name;
-}
-
-std::string AST2IR::new_temp() {
-    return "__t" + std::to_string(tmp_counter_++);
-}
-
-std::string AST2IR::new_label(const std::string& prefix) {
-    return prefix + "_" + std::to_string(label_counter_++);
-}
-
-BasicBlock* AST2IR::new_block(const std::string& prefix) {
-    auto block = std::make_unique<BasicBlock>();
-    block->label = new_label(prefix);
-    BasicBlock* ptr = block.get();
-    current_func_->blocks.push_back(std::move(block));
-    return ptr;
-}
-
-void AST2IR::emit(const Instruction& inst) {
-    current_block_->insts.push_back(inst);
-}
-
-Opcode AST2IR::map_op(Tok op) const {
-    switch (op) {
-        case Tok::ADD: return Opcode::ADD;
-        case Tok::SUB: return Opcode::SUB;
-        case Tok::STAR: return Opcode::MUL;
-        case Tok::SLASH: return Opcode::DIV;
-        case Tok::PERCENT: return Opcode::REM;
-        case Tok::LT: return Opcode::LT;
-        case Tok::GT: return Opcode::GT;
-        case Tok::LE: return Opcode::LE;
-        case Tok::GE: return Opcode::GE;
-        case Tok::EQ: return Opcode::EQ;
-        case Tok::NE: return Opcode::NE;
-        default: throw std::runtime_error("unsupported operator");
+    break;
+    case Opcode::NEG:{
+        if(new_inst->operands.size() != 1) throw std::runtime_error("negation should have only one operand");
+        if(type != new_inst->operands[0]->type) throw std::runtime_error("negation should have same type with its operand");
     }
+    break;
+    case Opcode::LOAD:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 1) throw std::runtime_error("for load, there should be exactly 1 operand");
+        Value* val = operands[0];
+        const Instruction* ins = nullptr;
+        if(!(ins = dynamic_cast<const Instruction*>(val)) || (ins->op != Opcode::ALLOCA))
+            throw std::runtime_error("the operand of load must be the result of alloca");
+        if(ins->type != type)
+            throw std::runtime_error("type of load and it's operand must be the same");
+        
+    }
+    break;
+    case Opcode::STORE:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("store should have 2 operands");
+        const Instruction* ins = dynamic_cast<const Instruction*>(operands[1]);
+        if(!ins || ins->op != Opcode::ALLOCA) 
+            throw std::runtime_error("the second operand of store must be alloca instruction");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("store's type must be void");
+        if(operands[0]->type != ins->type) throw std::runtime_error("store's two operands' type must be the same");
+    }
+    break;
+    case Opcode::BR:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 3) throw std::runtime_error("there should be 3 operands of BR");
+        if(!dynamic_cast<BasicBlock*>(operands[1]) || !dynamic_cast<BasicBlock*>(operands[2])) throw std::runtime_error("last two operands of BR must be BasicBlock");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("BR's type must be void");
+    }
+    break;
+    case Opcode::JMP:{
+        if(new_inst->operands.size() != 1) throw std::runtime_error("jmp needs exactly 1 operand");
+        if(!dynamic_cast<BasicBlock*>(new_inst->operands[0])) throw std::runtime_error("jmp target must be a BasicBlock");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("jmp's type must be void");
+    }
+    break;
+    case Opcode::RET:{
+        if(new_inst->operands.size() != 1) throw std::runtime_error("ret needs exactly 1 operand");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("ret's type must be void");
+    }
+    break;
+    case Opcode::CALL:{
+        if(new_inst->operands.empty()) throw std::runtime_error("call needs at least the callee");
+        Function* callee = dynamic_cast<Function*>(new_inst->operands[0]);
+        if(!callee) throw std::runtime_error("call's first operand must be a Function");
+        if(new_inst->operands.size() - 1 != callee->args.size())
+            throw std::runtime_error("call argument count mismatch with function " + callee->name);
+        if(new_inst->type != IntType::get())
+            throw std::runtime_error("call result type must be i32 (all functions return i32 for now)");
+    }
+    break;
+    case Opcode::PHI:
+        throw std::runtime_error("PHI is not implemented (mem2reg not in place yet)");
+    default:
+        throw std::runtime_error("unknown op");
+    }
+
+    return bb->add_inst(std::move(new_inst));
 }
 
 } // namespace IR
