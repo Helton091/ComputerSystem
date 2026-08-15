@@ -108,6 +108,7 @@ struct Function : Value{
     }
     Argument* add_arg();                       
     BasicBlock* add_block(const std::string& name);
+    Instruction* add_alloca(const std::string& var_name);
 };
 
 struct Module {
@@ -126,7 +127,7 @@ private:
 
 Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
                        const std::string& name,
-                       std::initializer_list<Value*> operands = {});
+                       const std::vector<Value*>& operands = {});
 
 
 } //namespace IR

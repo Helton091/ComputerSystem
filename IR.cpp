@@ -210,10 +210,17 @@ void Module::dump(std::ostream& out) const{
     }
 }
 
+Instruction* Function::add_alloca(const std::string& var_name){
+        std::unique_ptr<Instruction> inst = std::make_unique<Instruction>(Opcode::ALLOCA,IntType::get(),var_name);
+        Instruction* inst_spec = inst.get();
+        BasicBlock* target = blocks[0].get();
+        target->insts.insert(target->insts.end()-1,std::move(inst));
+        return inst_spec;
+}
+
 Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
                        const std::string& name,
-                       std::initializer_list<Value*> operands){
-
+                       const std::vector<Value*>& operands){
     std::unique_ptr<Instruction> new_inst = std::make_unique<Instruction>(op,type,name);
     for(Value* operand : operands) new_inst->add_operand(operand);
     switch(op){
@@ -302,6 +309,8 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     }
 
     return bb->add_inst(std::move(new_inst));
+    
 }
+
 
 } // namespace IR
