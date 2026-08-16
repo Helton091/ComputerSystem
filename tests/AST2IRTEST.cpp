@@ -1,5 +1,7 @@
 // AST2IR 回归测试：每个用例 = 源码 + 预期 dump 文本，逐字比对。
-// 编译：g++ -std=c++17 -Wall -Wextra AST2IRTEST.cpp IR.cpp AST2IR.cpp lexer.cpp parser.cpp -o ast2ir_test
+// 从仓库根目录编译：
+//   g++ -std=c++17 -Wall -Wextra -Isrc tests/AST2IRTEST.cpp src/IR.cpp src/AST2IR.cpp src/lexer.cpp src/parser.cpp -o temp/ast2ir_test
+// 运行：./temp/ast2ir_test
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "AST2IR.hpp"

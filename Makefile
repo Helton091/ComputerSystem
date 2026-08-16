@@ -2,29 +2,29 @@ CXX      := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra -g
 LDFLAGS  :=
 
-# ===== 目标：三个独立可执行文件 =====
+# ===== 目标：三个独立可执行文件（输出在根目录）=====
 TARGETS := simulator.exe assembler.exe compiler.exe
 
 .PHONY: all clean
 all: $(TARGETS)
 
-# ===== 模拟器（Computer.cpp 自带 main）=====
-simulator.exe: Computer.cpp Computer.hpp
+# ===== 模拟器 =====
+simulator.exe: src/Computer.cpp src/Computer.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@
 
-# ===== 汇编器（assembler.cpp 自带 main）=====
-assembler.exe: assembler.cpp assembler.hpp assembler_macro.hpp
+# ===== 汇编器 =====
+assembler.exe: src/assembler.cpp src/assembler.hpp src/assembler_macro.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 # ===== 编译器（多文件编译）=====
-compiler.exe: main.cpp compiler.cpp compiler.hpp \
-              lexer.cpp lexer.hpp \
-              parser.cpp parser.hpp \
-              IR.cpp IR.hpp \
-              AST2IR.cpp AST2IR.hpp \
-              IR2RISCV.cpp IR2RISCV.hpp \
-              ast.hpp token.hpp
-	$(CXX) $(CXXFLAGS) main.cpp compiler.cpp lexer.cpp parser.cpp IR.cpp AST2IR.cpp IR2RISCV.cpp -o $@
+compiler.exe: src/main.cpp src/compiler.cpp src/compiler.hpp \
+              src/lexer.cpp src/lexer.hpp \
+              src/parser.cpp src/parser.hpp \
+              src/IR.cpp src/IR.hpp \
+              src/AST2IR.cpp src/AST2IR.hpp \
+              src/IR2RISCV.cpp src/IR2RISCV.hpp \
+              src/ast.hpp src/token.hpp
+	$(CXX) $(CXXFLAGS) src/main.cpp src/compiler.cpp src/lexer.cpp src/parser.cpp src/IR.cpp src/AST2IR.cpp src/IR2RISCV.cpp -o $@
 
 # ===== 清理 =====
 clean:

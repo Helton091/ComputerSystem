@@ -48,8 +48,9 @@ foreach ($t in $tests) {
     $name = $t.name
     $exp = $t.expect
     $src = "$test_dir\$name.cmm"
-    $asm = "$name.s"
-    $bin = "$name.bin"
+    # intermediates go to temp\ (run from repo root: powershell tests/run_tests.ps1)
+    $asm = "temp\$name.s"
+    $bin = "temp\$name.bin"
     Write-Host ""
     Write-Host "===== $name (expect $exp) =====" -ForegroundColor Cyan
 
