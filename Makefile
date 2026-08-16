@@ -20,10 +20,11 @@ assembler.exe: assembler.cpp assembler.hpp assembler_macro.hpp
 compiler.exe: main.cpp compiler.cpp compiler.hpp \
               lexer.cpp lexer.hpp \
               parser.cpp parser.hpp \
-              codegen.cpp codegen.hpp \
-              ir.cpp ir.hpp \
+              IR.cpp IR.hpp \
+              AST2IR.cpp AST2IR.hpp \
+              IR2RISCV.cpp IR2RISCV.hpp \
               ast.hpp token.hpp
-	$(CXX) $(CXXFLAGS) main.cpp compiler.cpp lexer.cpp parser.cpp codegen.cpp ir.cpp -o $@
+	$(CXX) $(CXXFLAGS) main.cpp compiler.cpp lexer.cpp parser.cpp IR.cpp AST2IR.cpp IR2RISCV.cpp -o $@
 
 # ===== 清理 =====
 clean:

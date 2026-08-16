@@ -1,7 +1,9 @@
 #include "compiler.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
-#include "codegen.hpp"
+#include "IR.hpp"
+#include "AST2IR.hpp"
+#include "IR2RISCV.hpp"
 
 void Compiler::read_source_file() {
     std::ifstream file(source_path);
@@ -29,6 +31,11 @@ void Compiler::compile() {
     Parser parser(tokens);
     std::unique_ptr<ProgramNode> ast = parser.parse();
 
+    IR::AST2IR ast2ir;
+    std::unique_ptr<IR::Module> mod = ast2ir.translate(ast.get());
+
+    IR::IR2RISCV ir2riscv;
+    
     std::ofstream out(output_path);
     if (!out) {
         std::cerr << "Error: cannot open output file '" << output_path << "'\n";
@@ -36,6 +43,7 @@ void Compiler::compile() {
         return;
     }
 
-    CodeGen codegen;
-    codegen.generate(ast.get(), out);
+    ir2riscv.generate(mod.get(),out);
+
+    
 }
