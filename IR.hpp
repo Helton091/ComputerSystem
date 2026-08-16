@@ -116,7 +116,7 @@ struct Module {
     Function* add_function(const std::string& name);
     Function* find_function(const std::string& name) const;
     ConstantInt* get_const(int v);
-
+    const std::vector<std::unique_ptr<Function>>& get_functions() const{return functions;}
     void dump(std::ostream& out) const;
 
 private:
