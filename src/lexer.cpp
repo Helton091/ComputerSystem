@@ -1,6 +1,7 @@
 #include "lexer.hpp"
 #include <cctype>
 #include <iostream>
+#include <stdexcept>
 
 Lexer::Lexer(const std::string& source) : source_(source) {}
 
@@ -98,10 +99,26 @@ std::vector<Token> Lexer::tokenize() {
                     tokens.push_back({Tok::IDENT, ident, line_no, col_no});
                 }
                 col_no += static_cast<int>(i - start);
-            } else if (std::isdigit(c)) {
+            } else if (std::isdigit(c) || (c == '.' && i + 1 < source_.size() && std::isdigit(static_cast<unsigned char>(source_[i + 1])))) {
                 size_t start = i;
-                while (i < source_.size() && std::isdigit(static_cast<unsigned char>(source_[i]))) ++i;
-                tokens.push_back({Tok::NUMBER, source_.substr(start, i - start), line_no, col_no});
+                bool is_float = false;
+                while (i < source_.size() && std::isdigit(static_cast<unsigned char>(source_[i]))) {
+                    ++i;
+                }
+                if (i < source_.size() && source_[i] == '.') {
+                    is_float = true;
+                    ++i;
+                    while (i < source_.size() && std::isdigit(static_cast<unsigned char>(source_[i]))) {
+                        ++i;
+                    }
+                }
+
+                std::string text = source_.substr(start, i - start);
+                if (is_float) {
+                    tokens.push_back({Tok::FLOAT_NUMBER, text, line_no, col_no});
+                } else {
+                    tokens.push_back({Tok::INT_NUMBER, text, line_no, col_no});
+                }
                 col_no += static_cast<int>(i - start);
             } else {
                 std::cerr << "Error: unexpected character '" << c << "' at line " << line_no << " col " << col_no << "\n";

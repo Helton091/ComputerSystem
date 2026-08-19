@@ -29,7 +29,7 @@ void Compiler::compile() {
     }
 
     Parser parser(tokens);
-    std::unique_ptr<ProgramNode> ast = parser.parse();
+    std::unique_ptr<AST::ProgramNode> ast = parser.parse();
 
     IR::AST2IR ast2ir;
     std::unique_ptr<IR::Module> mod = ast2ir.translate(ast.get());

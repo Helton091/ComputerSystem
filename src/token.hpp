@@ -3,9 +3,9 @@
 #include <unordered_map>
 
 enum class Tok {
-    IDENT, NUMBER, EOF_TOK,
+    IDENT, INT_NUMBER, FLOAT_NUMBER,EOF_TOK,
 
-    KW_INT, KW_RETURN,
+    KW_INT, KW_RETURN, KW_FLOAT, 
 
     LPAREN, RPAREN, LCURLY, RCURLY, SEMICOLON, COMMA,
 
@@ -21,6 +21,7 @@ inline std::unordered_map<std::string, Tok> keywords = {
     {"if", Tok::KW_IF},
     {"else", Tok::KW_ELSE},
     {"while", Tok::KW_WHILE},
+    {"float", Tok::KW_FLOAT},
 };
 
 struct Token {

@@ -4,6 +4,86 @@
 #include<vector>
 #include<fstream>
 #include<iostream>
+#include<cmath>
+#include<cstring>
+
+static float bits_to_float(uint32_t bits){
+    float f;
+    static_assert(sizeof(f) == sizeof(bits));
+    std::memcpy(&f,&bits,sizeof(f));
+    return f;
+}
+
+static uint32_t float_to_bits(float f){
+    uint32_t bits;
+    static_assert(sizeof(f) == sizeof(bits));
+    std::memcpy(&bits,&f,sizeof(f));
+    return bits;
+}
+
+// ---- 浮点辅助函数 ----
+
+static uint32_t canonical_nan(){ return 0x7FC00000u; }
+
+static bool fp_is_nan(uint32_t bits){
+    uint32_t exp = (bits >> 23) & 0xFF;
+    uint32_t mant = bits & 0x7FFFFF;
+    return exp == 0xFF && mant != 0;
+}
+
+static uint32_t fclass_result(uint32_t bits){
+    uint32_t sign = bits >> 31;
+    uint32_t exp = (bits >> 23) & 0xFF;
+    uint32_t mant = bits & 0x7FFFFF;
+    if(exp == 0xFF && mant != 0){
+        return ((mant >> 22) & 1) ? (1u << 9) : (1u << 8); // qNaN / sNaN
+    }
+    if(exp == 0xFF && mant == 0){
+        return sign ? (1u << 0) : (1u << 7); // -inf / +inf
+    }
+    if(exp == 0 && mant == 0){
+        return sign ? (1u << 3) : (1u << 4); // -0 / +0
+    }
+    if(exp == 0 && mant != 0){
+        return sign ? (1u << 2) : (1u << 5); // negative / positive subnormal
+    }
+    return sign ? (1u << 1) : (1u << 6); // negative / positive normal
+}
+
+static uint32_t fmin(uint32_t a_bits, uint32_t b_bits){
+    float a = bits_to_float(a_bits);
+    float b = bits_to_float(b_bits);
+    if(fp_is_nan(a_bits) && fp_is_nan(b_bits)) return canonical_nan();
+    if(fp_is_nan(a_bits)) return b_bits;
+    if(fp_is_nan(b_bits)) return a_bits;
+    if(a == 0.0f && b == 0.0f){
+        return (a_bits & 0x80000000u) ? a_bits : b_bits;
+    }
+    return (a < b) ? a_bits : b_bits;
+}
+
+static uint32_t fmax(uint32_t a_bits, uint32_t b_bits){
+    float a = bits_to_float(a_bits);
+    float b = bits_to_float(b_bits);
+    if(fp_is_nan(a_bits) && fp_is_nan(b_bits)) return canonical_nan();
+    if(fp_is_nan(a_bits)) return b_bits;
+    if(fp_is_nan(b_bits)) return a_bits;
+    if(a == 0.0f && b == 0.0f){
+        return (a_bits & 0x80000000u) ? b_bits : a_bits;
+    }
+    return (a > b) ? a_bits : b_bits;
+}
+
+static int32_t float_to_int_rne(float f){
+    if(std::isnan(f) || std::isinf(f)) return INT32_MAX;
+    return static_cast<int32_t>(std::lrintf(f));
+}
+
+static uint32_t float_to_uint_rne(float f){
+    if(std::isnan(f) || f < 0.0f) return 0;
+    if(std::isinf(f) || f > static_cast<float>(UINT32_MAX)) return UINT32_MAX;
+    return static_cast<uint32_t>(std::llrintf(f));
+}
 
 void Computer::execute_step() {
     // 停机状态：直接返回，不再取指执行
@@ -245,6 +325,20 @@ void Computer::execute_step() {
             }
             break;
         }
+        case 0b0000111: { // LOAD-FP (flw)
+            if(funct3 == 0b010){
+                uint32_t addr = RegFile[rs1] + static_cast<uint32_t>(immI);
+                FRegFile[rd] = ReadWord(addr);
+            }
+            break;
+        }
+        case 0b0100111: { // STORE-FP (fsw)
+            if(funct3 == 0b010){
+                uint32_t addr = RegFile[rs1] + static_cast<uint32_t>(immS);
+                WriteWord(addr, FRegFile[rs2]);
+            }
+            break;
+        }
         case 0b1100011: { // Branch
             uint32_t a = RegFile[rs1];
             uint32_t b = RegFile[rs2];
@@ -291,6 +385,9 @@ void Computer::execute_step() {
                         case 1: // print_int
                             std::printf("%d", static_cast<int32_t>(a0));
                             break;
+                        case 2: // print_float (fa0)
+                            std::printf("%f", static_cast<double>(bits_to_float(FRegFile[10])));
+                            break;
                         case 4: { // print_string
                             uint32_t addr = a0;
                             while(addr < MEM_SIZE){
@@ -313,6 +410,117 @@ void Computer::execute_step() {
                     // ebreak
                     halted = true;
                 }
+            }
+            break;
+        }
+        case 0b1010011: { // OP-FP
+            uint8_t funct7_fp = (instruction >> 25) & 0x7F;
+            uint8_t funct5_fp = funct7_fp >> 2;
+            uint8_t fmt = funct7_fp & 0x3;
+            if(fmt != 0) break; // 只支持 single precision
+
+            switch(funct5_fp){
+                case 0b00000: { // fadd.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    float b = bits_to_float(FRegFile[rs2]);
+                    FRegFile[rd] = float_to_bits(a + b);
+                    break;
+                }
+                case 0b00001: { // fsub.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    float b = bits_to_float(FRegFile[rs2]);
+                    FRegFile[rd] = float_to_bits(a - b);
+                    break;
+                }
+                case 0b00010: { // fmul.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    float b = bits_to_float(FRegFile[rs2]);
+                    FRegFile[rd] = float_to_bits(a * b);
+                    break;
+                }
+                case 0b00011: { // fdiv.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    float b = bits_to_float(FRegFile[rs2]);
+                    FRegFile[rd] = float_to_bits(a / b);
+                    break;
+                }
+                case 0b01011: { // fsqrt.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    FRegFile[rd] = float_to_bits(std::sqrt(a));
+                    break;
+                }
+                case 0b00100: { // fsgnj / fsgnjn / fsgnjx
+                    uint32_t a_bits = FRegFile[rs1];
+                    uint32_t b_bits = FRegFile[rs2];
+                    uint32_t sign = 0;
+                    if(funct3 == 0b000){
+                        sign = b_bits & 0x80000000u;
+                    } else if(funct3 == 0b001){
+                        sign = (~b_bits) & 0x80000000u;
+                    } else if(funct3 == 0b010){
+                        sign = (a_bits ^ b_bits) & 0x80000000u;
+                    }
+                    FRegFile[rd] = (a_bits & 0x7FFFFFFFu) | sign;
+                    break;
+                }
+                case 0b00101: { // fmin / fmax
+                    if(funct3 == 0b000){
+                        FRegFile[rd] = fmin(FRegFile[rs1], FRegFile[rs2]);
+                    } else if(funct3 == 0b001){
+                        FRegFile[rd] = fmax(FRegFile[rs1], FRegFile[rs2]);
+                    }
+                    break;
+                }
+                case 0b10100: { // feq / flt / fle
+                    float a = bits_to_float(FRegFile[rs1]);
+                    float b = bits_to_float(FRegFile[rs2]);
+                    bool cmp = false;
+                    if(!std::isnan(a) && !std::isnan(b)){
+                        if(funct3 == 0b000) cmp = (a <= b);
+                        else if(funct3 == 0b001) cmp = (a < b);
+                        else if(funct3 == 0b010) cmp = (a == b);
+                    }
+                    WriteReg(rd, cmp ? 1u : 0u);
+                    break;
+                }
+                case 0b11000: { // fcvt.w.s / fcvt.wu.s
+                    float a = bits_to_float(FRegFile[rs1]);
+                    uint32_t ires = 0;
+                    if(funct3 == 0b000){
+                        if(rs2 == 0b00000){
+                            ires = static_cast<uint32_t>(float_to_int_rne(a));
+                        } else if(rs2 == 0b00001){
+                            ires = float_to_uint_rne(a);
+                        }
+                    }
+                    WriteReg(rd, ires);
+                    break;
+                }
+                case 0b11010: { // fcvt.s.w / fcvt.s.wu
+                    float fres = 0.0f;
+                    if(rs2 == 0b00000){
+                        fres = static_cast<float>(static_cast<int32_t>(RegFile[rs1]));
+                    } else if(rs2 == 0b00001){
+                        fres = static_cast<float>(RegFile[rs1]);
+                    }
+                    FRegFile[rd] = float_to_bits(fres);
+                    break;
+                }
+                case 0b11100: { // fmv.x.w / fclass.s
+                    uint32_t a_bits = FRegFile[rs1];
+                    if(funct3 == 0b000){ // fmv.x.w
+                        WriteReg(rd, a_bits);
+                    } else if(funct3 == 0b001){ // fclass.s
+                        WriteReg(rd, fclass_result(a_bits));
+                    }
+                    break;
+                }
+                case 0b11110: { // fmv.w.x
+                    FRegFile[rd] = RegFile[rs1];
+                    break;
+                }
+                default:
+                    break;
             }
             break;
         }
@@ -355,9 +563,10 @@ int main(int argc, char* argv[]){
         cpu.set_trace([](const Computer& c){
             uint32_t pc = c.get_pc();
             uint32_t inst = c.ReadWord(pc);
-            std::fprintf(stderr, "PC=0x%08X inst=0x%08X | a0=%d a7=%d sp=0x%08X\n",
+            std::fprintf(stderr, "PC=0x%08X inst=0x%08X | a0=%d fa0=%f a7=%d sp=0x%08X\n",
                          pc, inst,
                          static_cast<int32_t>(c.get_reg(10)),
+                         static_cast<double>(bits_to_float(c.get_freg(10))),
                          static_cast<int32_t>(c.get_reg(17)),
                          c.get_reg(2));
         });

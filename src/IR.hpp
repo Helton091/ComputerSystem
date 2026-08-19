@@ -20,6 +20,7 @@ public:
     static IntType* get(){static IntType i; return &i;}
     int size() const override{return 4;}
     std::string to_string() const override{return "i32";}
+    
 private:
     IntType() = default;
 };
@@ -33,10 +34,21 @@ private:
     VoidType() = default;
 };
 
+class FloatType : public Type{
+public:
+    static FloatType* get(){static FloatType f; return &f;}
+    int size() const override{return 4;}
+    std::string to_string() const override{return "float";}
+private:
+    FloatType() = default;
+};
+
 enum class Opcode{
     ALLOCA, LOAD, STORE,
     ADD, SUB, MUL, DIV, REM, NEG,
+    FADD, FSUB, FMUL, FDIV, FNEG,
     LT, GT, LE, GE, EQ, NE,
+    FLT,FGT,FLE,FGE,FEQ,FNE,
     BR, JMP, RET,
     CALL,
     PHI
@@ -72,10 +84,15 @@ struct ConstantInt : Value {
     explicit ConstantInt(int v) : Value(IntType::get()), i_val(v) {}
 };
 
+struct ConstantFloat : Value{
+    float f_val;
+    explicit ConstantFloat(float f) : Value(FloatType::get()), f_val(f) {}
+};
+
 struct Argument : Value{
     int arg_no;
-    explicit Argument(int no)
-        : Value(IntType::get(), "arg" + std::to_string(no)), arg_no(no) {}
+    explicit Argument(int no, Type* typ)
+        : Value(typ, "arg" + std::to_string(no)), arg_no(no) {}
 };
 
 struct Instruction : User{
@@ -96,32 +113,36 @@ struct BasicBlock : Value{
 };
 
 struct Function : Value{
+    Type* return_type;
     std::vector<std::unique_ptr<Argument>> args;
     std::vector<std::unique_ptr<BasicBlock>> blocks;
     BasicBlock* entry = nullptr;
-    explicit Function(std::string n)
-        : Value(VoidType::get(), std::move(n)) {}
+    explicit Function(std::string n, Type* ret_typ)
+        : Value(VoidType::get(), std::move(n)), return_type(ret_typ) {}
     ~Function(){
         for (auto& block : blocks)
             for (auto& inst : block->insts)
                 inst->drop_operands();
     }
-    Argument* add_arg();                       
+    Argument* add_arg(Type* typ);                       
     BasicBlock* add_block(const std::string& name);
-    Instruction* add_alloca(const std::string& var_name);
+    Instruction* add_alloca(const std::string& var_name, Type* typ);
 };
 
 struct Module {
     
-    Function* add_function(const std::string& name);
+    Function* add_function(const std::string& name, Type* typ);
     Function* find_function(const std::string& name) const;
     ConstantInt* get_const(int v);
+    ConstantFloat* get_const(float f);
     const std::vector<std::unique_ptr<Function>>& get_functions() const{return functions;}
     void dump(std::ostream& out) const;
 
 private:
-    std::vector<std::unique_ptr<ConstantInt>> const_pool_; 
-    std::unordered_map<int, ConstantInt*> const_map_;
+    std::vector<std::unique_ptr<ConstantInt>> int_const_pool_; 
+    std::vector<std::unique_ptr<ConstantFloat>> float_const_pool_;
+    std::unordered_map<int, ConstantInt*> int_const_map_;
+    std::unordered_map<float , ConstantFloat*> float_const_map_;
     std::vector<std::unique_ptr<Function>> functions;        
 };
 

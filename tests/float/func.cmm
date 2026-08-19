@@ -1,0 +1,7 @@
+float square(float x) {
+    return x * x;
+}
+
+float main() {
+    return square(2.0);
+}

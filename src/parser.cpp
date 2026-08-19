@@ -1,5 +1,7 @@
 #include "parser.hpp"
 
+using namespace AST;
+
 int Parser::left_binding_power(Tok type) {
     switch (type) {
         case Tok::ASSIGN: return 1;
@@ -49,8 +51,10 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
 
 std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
     switch (token.type) {
-    case Tok::NUMBER:
-        return std::make_unique<NumberNode>(std::stoi(token.text));
+    case Tok::INT_NUMBER:
+        return std::make_unique<IntNumberNode>(std::stoi(token.text));
+    case Tok::FLOAT_NUMBER:
+        return std::make_unique<FloatNumberNode>(std::stof(token.text));
     case Tok::LPAREN: {
         std::unique_ptr<ExprNode> result = parse_expression(0);
         expect(Tok::RPAREN, "expect corressponding rparen");
@@ -80,6 +84,7 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
 }
 
 std::unique_ptr<StatementNode> Parser::parse_declaration_statement() {
+    std::unique_ptr<Type> ty = parse_type_tok();
     const Token& token = expect(Tok::IDENT, "expect variable name");
     std::string name = token.text;
 
@@ -89,7 +94,7 @@ std::unique_ptr<StatementNode> Parser::parse_declaration_statement() {
     }
 
     expect(Tok::SEMICOLON, "Expected ';'");
-    return std::make_unique<DeclStmt>(name, std::move(init));
+    return std::make_unique<DeclStmt>(TypedName(std::move(name),std::move(ty)), std::move(init));
 }
 
 std::unique_ptr<ExprNode> Parser::parse_expression(int min_bp) {
@@ -111,7 +116,7 @@ std::unique_ptr<ExprNode> Parser::parse_expression(int min_bp) {
 std::unique_ptr<StatementNode> Parser::parse_statement() {
     if (match(Tok::KW_RETURN)) {
         return parse_return_statement();
-    } else if (match(Tok::KW_INT)) {
+    } else if (peek().type == Tok::KW_INT || peek().type == Tok::KW_FLOAT) {
         return parse_declaration_statement();
     } else if (match(Tok::KW_IF)) {
         expect(Tok::LPAREN, "expect lparen after if");
@@ -168,7 +173,7 @@ std::vector<Param> Parser::parse_parameters() {
         return params; // No parameters
     }
     do {
-        expect(Tok::KW_INT, "Expected 'int' in parameter declaration");
+        std::unique_ptr<Type> parsed_type = parse_type_tok();
         const Token& name_token = expect(Tok::IDENT, "Expected parameter name");
         if (seen.count(name_token.text)) {
             throw std::runtime_error(
@@ -177,13 +182,13 @@ std::vector<Param> Parser::parse_parameters() {
             );
         }
         seen.insert(name_token.text);
-        params.push_back({name_token.text, std::make_unique<IntType>()});
+        params.push_back({name_token.text, std::move(parsed_type)});
     } while (match(Tok::COMMA));
     return params;
 }
 
 std::unique_ptr<FunctionNode> Parser::parse_function() {
-    expect(Tok::KW_INT, "Expected 'int' at the beginning of function declaration");
+    std::unique_ptr<Type> ret_type = parse_type_tok();
     const Token& name_token = expect(Tok::IDENT, "Expected function name");
     std::string func_name = name_token.text;
     expect(Tok::LPAREN, "Expected '(' after function name");
@@ -192,7 +197,7 @@ std::unique_ptr<FunctionNode> Parser::parse_function() {
     expect(Tok::LCURLY, "Expected '{' at the beginning of function body");
     std::unique_ptr<BlockStatement> body = parse_block();
     expect(Tok::RCURLY, "Expected '}' at the end of function body");
-    return std::make_unique<FunctionNode>(func_name, std::make_unique<IntType>(), std::move(params), std::move(body));
+    return std::make_unique<FunctionNode>(func_name, std::move(ret_type), std::move(params), std::move(body));
 }
 
 std::unique_ptr<ProgramNode> Parser::parse() {

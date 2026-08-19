@@ -67,8 +67,8 @@ Instruction* BasicBlock::add_inst(std::unique_ptr<Instruction> inst){
     return insts.back().get();
 }
 
-Argument* Function::add_arg(){
-    args.push_back(std::make_unique<Argument>(args.size()));
+Argument* Function::add_arg(Type* typ){
+    args.push_back(std::make_unique<Argument>(args.size(),typ));
     return args.back().get();
 }
 
@@ -80,9 +80,9 @@ BasicBlock* Function::add_block(const std::string& name){
     return blocks.back().get();
 }
 
-Function* Module::add_function(const std::string& name){
+Function* Module::add_function(const std::string& name, Type* typ){
     if(find_function(name)) throw std::runtime_error("duplicated function " + name);
-    functions.push_back(std::make_unique<Function>(name));
+    functions.push_back(std::make_unique<Function>(name,typ));
     return functions.back().get();
 }
 
@@ -94,12 +94,21 @@ Function* Module::find_function(const std::string& name) const{
 }
 
 ConstantInt* Module::get_const(int v){
-    auto it = const_map_.find(v);
-    if(it == const_map_.end()){
-        const_pool_.push_back(std::make_unique<ConstantInt>(v));
-        const_map_[v] = const_pool_.back().get();
+    auto it = int_const_map_.find(v);
+    if(it == int_const_map_.end()){
+        int_const_pool_.push_back(std::make_unique<ConstantInt>(v));
+        int_const_map_[v] = int_const_pool_.back().get();
     }
-    return const_map_[v];
+    return int_const_map_[v];
+}
+
+ConstantFloat* Module::get_const(float f){
+    auto it = float_const_map_.find(f);
+    if(it == float_const_map_.end()){
+        float_const_pool_.push_back(std::make_unique<ConstantFloat>(f));
+        float_const_map_[f] = float_const_pool_.back().get();
+    }
+    return float_const_map_[f];
 }
 
 // ============================================================
@@ -117,12 +126,23 @@ static std::string op_str(Opcode op){
     case Opcode::DIV:    return "div";
     case Opcode::REM:    return "rem";
     case Opcode::NEG:    return "neg";
+    case Opcode::FADD:   return "fadd";
+    case Opcode::FSUB:   return "fsub";
+    case Opcode::FMUL:   return "fmul";
+    case Opcode::FDIV:   return "fdiv";
+    case Opcode::FNEG:   return "fneg";
     case Opcode::LT:     return "lt";
     case Opcode::GT:     return "gt";
     case Opcode::LE:     return "le";
     case Opcode::GE:     return "ge";
     case Opcode::EQ:     return "eq";
     case Opcode::NE:     return "ne";
+    case Opcode::FLT:    return "flt";
+    case Opcode::FGT:    return "fgt";
+    case Opcode::FLE:    return "fle";
+    case Opcode::FGE:    return "fge";
+    case Opcode::FEQ:    return "feq";
+    case Opcode::FNE:    return "fne";
     case Opcode::BR:     return "br";
     case Opcode::JMP:    return "jmp";
     case Opcode::RET:    return "ret";
@@ -136,6 +156,8 @@ static std::string op_str(Opcode op){
 static std::string operand_str(const Value* v){
     if(auto* c = dynamic_cast<const ConstantInt*>(v))
         return std::to_string(c->i_val);
+    if(auto* f = dynamic_cast<const ConstantFloat*>(v))
+        return std::to_string(f->f_val);
     if(auto* f = dynamic_cast<const Function*>(v))
         return "@" + f->name;
     return "%" + v->name;
@@ -195,10 +217,10 @@ static void dump_inst(const Instruction& inst, std::ostream& out){
 
 void Module::dump(std::ostream& out) const{
     for(const auto& func : functions){
-        out << "define i32 @" << func->name << "(";
+        out << "define " << func->return_type->to_string() << " @" << func->name << "(";
         for(size_t i = 0; i < func->args.size(); ++i){
             if(i > 0) out << ", ";
-            out << "i32 %" << func->args[i]->name;
+            out << func->args[i]->type->to_string() << " %" << func->args[i]->name;
         }
         out << ") {\n";
         for(const auto& block : func->blocks){
@@ -210,8 +232,8 @@ void Module::dump(std::ostream& out) const{
     }
 }
 
-Instruction* Function::add_alloca(const std::string& var_name){
-        std::unique_ptr<Instruction> inst = std::make_unique<Instruction>(Opcode::ALLOCA,IntType::get(),var_name);
+Instruction* Function::add_alloca(const std::string& var_name, Type* typ){
+        std::unique_ptr<Instruction> inst = std::make_unique<Instruction>(Opcode::ALLOCA,typ,var_name);
         Instruction* inst_spec = inst.get();
         BasicBlock* target = blocks[0].get();
         target->insts.insert(target->insts.end()-1,std::move(inst));
@@ -230,9 +252,11 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::DIV:
     case Opcode::REM:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there should be exactly 2 operand");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there operands' type must be equal");
-        if(type != operands[0]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM， the result's type must be equal to operands' type");
+        if(operands.size() != 2) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there should be exactly 2 operands");
+        if(operands[0]->type != IntType::get() || operands[1]->type != IntType::get())
+            throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, operands must be i32");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, operands' type must be equal");
+        if(type != IntType::get()) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, the result's type must be i32");
     }
     break;
     case Opcode::LT:
@@ -242,14 +266,47 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::EQ:
     case Opcode::NE:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there should be exactly 2 operand");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there operands' type must be equal");
-        if(type != IntType::get()) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE， the result's type must be I32");
+        if(operands.size() != 2) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there should be exactly 2 operands");
+        if(operands[0]->type != IntType::get() || operands[1]->type != IntType::get())
+            throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, operands must be i32");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, operands' type must be equal");
+        if(type != IntType::get()) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, the result's type must be i32");
     }
     break;
     case Opcode::NEG:{
         if(new_inst->operands.size() != 1) throw std::runtime_error("negation should have only one operand");
-        if(type != new_inst->operands[0]->type) throw std::runtime_error("negation should have same type with its operand");
+        if(new_inst->operands[0]->type != IntType::get()) throw std::runtime_error("negation operand must be i32");
+        if(type != IntType::get()) throw std::runtime_error("negation result must be i32");
+    }
+    break;
+    case Opcode::FADD:
+    case Opcode::FSUB:
+    case Opcode::FMUL:
+    case Opcode::FDIV:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, there should be exactly 2 operands");
+        if(operands[0]->type != FloatType::get() || operands[1]->type != FloatType::get())
+            throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, operands must be float");
+        if(type != FloatType::get()) throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, the result's type must be float");
+    }
+    break;
+    case Opcode::FLT:
+    case Opcode::FGT:
+    case Opcode::FLE:
+    case Opcode::FGE:
+    case Opcode::FEQ:
+    case Opcode::FNE:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, there should be exactly 2 operands");
+        if(operands[0]->type != FloatType::get() || operands[1]->type != FloatType::get())
+            throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, operands must be float");
+        if(type != IntType::get()) throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, the result's type must be i32");
+    }
+    break;
+    case Opcode::FNEG:{
+        if(new_inst->operands.size() != 1) throw std::runtime_error("float negation should have only one operand");
+        if(new_inst->operands[0]->type != FloatType::get()) throw std::runtime_error("float negation operand must be float");
+        if(type != FloatType::get()) throw std::runtime_error("float negation result must be float");
     }
     break;
     case Opcode::LOAD:{
@@ -298,8 +355,12 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         if(!callee) throw std::runtime_error("call's first operand must be a Function");
         if(new_inst->operands.size() - 1 != callee->args.size())
             throw std::runtime_error("call argument count mismatch with function " + callee->name);
-        if(new_inst->type != IntType::get())
-            throw std::runtime_error("call result type must be i32 (all functions return i32 for now)");
+        if(new_inst->type != callee->return_type)
+            throw std::runtime_error("call result type must match return type of function " + callee->name);
+        for(size_t i = 0; i < callee->args.size(); ++i){
+            if(new_inst->operands[i+1]->type != callee->args[i]->type)
+                throw std::runtime_error("call argument type mismatch with function " + callee->name);
+        }
     }
     break;
     case Opcode::PHI:

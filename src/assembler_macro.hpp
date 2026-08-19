@@ -6,6 +6,7 @@ struct InstDef {
     uint8_t funct3;
     uint8_t funct7;
     Fmt fmt;
+    uint8_t rs2 = 0;   // 对两操作数 R-type 指令（如 fsqrt.s/fcvt/fmv）提供固定 rs2
 };
 
 static const InstDef INST_TABLE[] = {
@@ -68,6 +69,46 @@ static const InstDef INST_TABLE[] = {
     // System
     {"ecall",  0x73, 0x0, 0x00, Fmt::I},
     {"ebreak", 0x73, 0x0, 0x00, Fmt::I},
+
+    // RV32F floating-point load/store
+    {"flw", 0x07, 0x2, 0x00, Fmt::I},
+    {"fsw", 0x27, 0x2, 0x00, Fmt::S},
+
+    // RV32F computational (R-type, 3 operands)
+    {"fadd.s",  0x53, 0x0, 0x00, Fmt::R},
+    {"fsub.s",  0x53, 0x0, 0x04, Fmt::R},
+    {"fmul.s",  0x53, 0x0, 0x08, Fmt::R},
+    {"fdiv.s",  0x53, 0x0, 0x0C, Fmt::R},
+
+    // RV32F sign-injection
+    {"fsgnj.s",  0x53, 0x0, 0x10, Fmt::R},
+    {"fsgnjn.s", 0x53, 0x1, 0x10, Fmt::R},
+    {"fsgnjx.s", 0x53, 0x2, 0x10, Fmt::R},
+
+    // RV32F min/max
+    {"fmin.s", 0x53, 0x0, 0x14, Fmt::R},
+    {"fmax.s", 0x53, 0x1, 0x14, Fmt::R},
+
+    // RV32F compare (result in integer register)
+    {"fle.s", 0x53, 0x0, 0x50, Fmt::R},
+    {"flt.s", 0x53, 0x1, 0x50, Fmt::R},
+    {"feq.s", 0x53, 0x2, 0x50, Fmt::R},
+
+    // RV32F conversion (R-type, 2 operands, fixed rs2)
+    {"fcvt.w.s",  0x53, 0x0, 0x60, Fmt::R, 0x00},
+    {"fcvt.wu.s", 0x53, 0x0, 0x60, Fmt::R, 0x01},
+    {"fcvt.s.w",  0x53, 0x0, 0x68, Fmt::R, 0x00},
+    {"fcvt.s.wu", 0x53, 0x0, 0x68, Fmt::R, 0x01},
+
+    // RV32F move/class (R-type, 2 operands, fixed rs2)
+    {"fmv.x.w", 0x53, 0x0, 0x70, Fmt::R, 0x00},
+    {"fclass.s",0x53, 0x1, 0x70, Fmt::R, 0x00},
+    {"fmv.w.x", 0x53, 0x0, 0x78, Fmt::R, 0x00},
+
+    // RV32F sqrt (R-type, 2 operands, fixed rs2=0)
+    {"fsqrt.s", 0x53, 0x0, 0x2C, Fmt::R, 0x00},
+
+    
 };
 
 inline const InstDef* find_inst(const std::string& name) {
@@ -84,6 +125,7 @@ struct RegDef {
 };
 
 static const RegDef REG_TABLE[] = {
+    // Integer registers
     {"x0","zero", 0}, {"x1","ra", 1}, {"x2","sp", 2}, {"x3","gp", 3},
     {"x4","tp", 4}, {"x5","t0", 5}, {"x6","t1", 6}, {"x7","t2", 7},
     {"x8","s0", 8}, {"x9","s1", 9}, {"x10","a0",10},{"x11","a1",11},
@@ -91,7 +133,18 @@ static const RegDef REG_TABLE[] = {
     {"x16","a6",16},{"x17","a7",17},{"x18","s2",18},{"x19","s3",19},
     {"x20","s4",20},{"x21","s5",21},{"x22","s6",22},{"x23","s7",23},
     {"x24","s8",24},{"x25","s9",25},{"x26","s10",26},{"x27","s11",27},
-    {"x28","t3",28},{"x29","t4",29},{"x30","t5",30},{"x31","t6",31}
+    {"x28","t3",28},{"x29","t4",29},{"x30","t5",30},{"x31","t6",31},
+
+    // Floating-point registers
+    {"f0","ft0", 0},  {"f1","ft1", 1},  {"f2","ft2", 2},  {"f3","ft3", 3},
+    {"f4","ft4", 4},  {"f5","ft5", 5},  {"f6","ft6", 6},  {"f7","ft7", 7},
+    {"f8","fs0", 8},  {"f9","fs1", 9},
+    {"f10","fa0",10}, {"f11","fa1",11}, {"f12","fa2",12}, {"f13","fa3",13},
+    {"f14","fa4",14}, {"f15","fa5",15}, {"f16","fa6",16}, {"f17","fa7",17},
+    {"f18","fs2",18}, {"f19","fs3",19}, {"f20","fs4",20}, {"f21","fs5",21},
+    {"f22","fs6",22}, {"f23","fs7",23}, {"f24","fs8",24}, {"f25","fs9",25},
+    {"f26","fs10",26},{"f27","fs11",27},
+    {"f28","ft8",28}, {"f29","ft9",29}, {"f30","ft10",30},{"f31","ft11",31}
 };
 
 inline uint32_t get_reg_index(const std::string& name) {

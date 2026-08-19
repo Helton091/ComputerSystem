@@ -26,6 +26,19 @@ struct RawLine {
 
 inline uint32_t get_instruction_size(const RawLine& raw_line){
     if(raw_line.mnemonic.empty()) return 0;
+    if(raw_line.mnemonic == "li" && raw_line.operands.size() == 2){
+        const std::string& s = raw_line.operands[1];
+        try {
+            int64_t imm = 0;
+            if(s.size() >= 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+                imm = static_cast<int64_t>(std::stoull(s, nullptr, 16));
+            else
+                imm = std::stoll(s);
+            if(imm < -2048 || imm > 2047) return 8;
+        } catch(...) {
+            // malformed immediate, let Pass2 report the error
+        }
+    }
     return 4;
 }
 

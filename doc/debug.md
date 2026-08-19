@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-08-19 float 测试死循环：li 伪指令长度导致标签地址错位
+
+**现象**：新增 `float/literal` 测试时，simulator 在 `j .Lmain_epilogue`
+处无限循环，`fa0` 已经正确赋值为 `2.500000` 但程序不退出。
+
+**根因**：`li t0, 1075838976` 的立即数超出 12 位，assembler 实际展开为
+`lui + addi`，占 **8 字节**。但 [assembler.hpp](file:///c:/Users/helton/Desktop/学习文件/compiler/src/assembler.hpp#L27-L30) 中的
+`get_instruction_size` 对所有指令都返回 **4**，导致 Pass1 给后续标签计算
+的地址比实际小了 4。于是 `j .Lmain_epilogue` 跳转到了自己，形成死循环。
+
+**解法**：让 `get_instruction_size` 识别 `li`：当立即数在 `[-2048, 2047]`
+范围内时返回 4，否则返回 8。
+
+**教训**：伪指令在 Pass1（算标签地址）和 Pass2（真正 emit）时的长度必须
+一致；标签地址错位会让跳转/调用出现非常隐蔽的死循环。
+
+---
+
 ## 2026-08-16 PowerShell 测试脚本全员"compile error"
 
 **现象**：目录重组后 `run_tests.ps1` 每个用例都报 compile error，

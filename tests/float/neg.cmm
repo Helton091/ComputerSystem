@@ -1,0 +1,4 @@
+float main() {
+    float a = 1.5;
+    return -a;
+}

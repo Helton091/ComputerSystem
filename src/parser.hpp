@@ -42,22 +42,38 @@ public:
         return false;
     }
 
-    std::unique_ptr<ProgramNode> parse_program();
-    std::unique_ptr<FunctionNode> parse_function();
-    std::vector<Param> parse_parameters();
-    std::unique_ptr<BlockStatement> parse_block();
-    std::unique_ptr<StatementNode> parse_statement();
-    std::unique_ptr<ReturnStatement> parse_return_statement();
-    std::unique_ptr<StatementNode> parse_declaration_statement();
+    std::unique_ptr<AST::Type> parse_type_tok(const std::string& err_msg = "expected data type (like int, float)"){
+        const Token& token = advance();
+        switch(token.type){
+        case Tok::KW_INT:
+            return std::make_unique<AST::IntType>();
+        case Tok::KW_FLOAT:
+            return std::make_unique<AST::FloatType>();
+        default:
+            throw std::runtime_error(
+                err_msg + " at line " + std::to_string(token.line_no) +
+                ", col " + std::to_string(token.col_no)
+            );
+        } 
+
+    }
+
+    std::unique_ptr<AST::ProgramNode> parse_program();
+    std::unique_ptr<AST::FunctionNode> parse_function();
+    std::vector<AST::Param> parse_parameters();
+    std::unique_ptr<AST::BlockStatement> parse_block();
+    std::unique_ptr<AST::StatementNode> parse_statement();
+    std::unique_ptr<AST::ReturnStatement> parse_return_statement();
+    std::unique_ptr<AST::StatementNode> parse_declaration_statement();
 
     // Pratt 表达式解析
-    std::unique_ptr<ExprNode> parse_expression(int min_bp = 0);
-    std::unique_ptr<ExprNode> nud(const Token& token);
-    std::unique_ptr<ExprNode> led(const Token& token, std::unique_ptr<ExprNode> left, std::unique_ptr<ExprNode> right);
+    std::unique_ptr<AST::ExprNode> parse_expression(int min_bp = 0);
+    std::unique_ptr<AST::ExprNode> nud(const Token& token);
+    std::unique_ptr<AST::ExprNode> led(const Token& token, std::unique_ptr<AST::ExprNode> left, std::unique_ptr<AST::ExprNode> right);
     int left_binding_power(Tok type);
     int right_binding_power(Tok type);
 
 public:
     explicit Parser(const std::vector<Token>& toks) : tokens(toks) {}
-    std::unique_ptr<ProgramNode> parse();
+    std::unique_ptr<AST::ProgramNode> parse();
 };

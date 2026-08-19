@@ -131,6 +131,40 @@ void Assembler::Pass2(){
             );
             continue;
         }
+        if(raw_line.mnemonic == "fmv.s"){
+            if(raw_line.operands.size() != 2){
+                std::cerr << "Error: 'fmv.s' expects 2 operands at line " << raw_line.line << "\n";
+                continue;
+            }
+            uint32_t rd = get_reg_index(raw_line.operands[0]);
+            uint32_t rs1 = get_reg_index(raw_line.operands[1]);
+            if(rd == 0xFFFFFFFF || rs1 == 0xFFFFFFFF){
+                std::cerr << "Error: Invalid register in 'fmv.s' at line " << raw_line.line << "\n";
+                continue;
+            }
+            // fmv.s rd, rs1 是 fsgnj.s rd, rs1, rs1 的伪指令
+            machine_codes.push_back(
+                (0x10 << 25) | (rs1 << 20) | (rs1 << 15) | (0 << 12) | (rd << 7) | 0x53
+            );
+            continue;
+        }
+        if(raw_line.mnemonic == "fneg.s"){
+            if(raw_line.operands.size() != 2){
+                std::cerr << "Error: 'fneg.s' expects 2 operands at line " << raw_line.line << "\n";
+                continue;
+            }
+            uint32_t rd = get_reg_index(raw_line.operands[0]);
+            uint32_t rs1 = get_reg_index(raw_line.operands[1]);
+            if(rd == 0xFFFFFFFF || rs1 == 0xFFFFFFFF){
+                std::cerr << "Error: Invalid register in 'fneg.s' at line " << raw_line.line << "\n";
+                continue;
+            }
+            // fneg.s rd, rs1 是 fsgnjn.s rd, rs1, rs1 的伪指令
+            machine_codes.push_back(
+                (0x10 << 25) | (rs1 << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x53
+            );
+            continue;
+        }
 
         const InstDef* inst_def = find_inst(raw_line.mnemonic);
         if(inst_def == nullptr){
@@ -141,15 +175,27 @@ void Assembler::Pass2(){
 
         switch(inst_def->fmt){
             case Fmt::R: {
-                if(raw_line.operands.size() != 3){
+                // 大多数 R-type 有 3 个操作数 rd, rs1, rs2
+                // 浮点 fsqrt.s / fcvt.* / fmv.* / fclass.s 只有 2 个操作数 rd, rs1，rs2 来自 InstDef
+                if(raw_line.operands.size() != 3 && raw_line.operands.size() != 2){
                     std::cerr << "Error: R-type instruction '" << raw_line.mnemonic
-                              << "' expects 3 operands at line " << raw_line.line << "\n";
+                              << "' expects 2 or 3 operands at line " << raw_line.line << "\n";
                     continue;
                 }
                 uint32_t rd = get_reg_index(raw_line.operands[0]);
                 uint32_t rs1 = get_reg_index(raw_line.operands[1]);
-                uint32_t rs2 = get_reg_index(raw_line.operands[2]);
-                if(rd == 0xFFFFFFFF || rs1 == 0xFFFFFFFF || rs2 == 0xFFFFFFFF){
+                uint32_t rs2 = 0;
+                if(raw_line.operands.size() == 3){
+                    rs2 = get_reg_index(raw_line.operands[2]);
+                    if(rs2 == 0xFFFFFFFF){
+                        std::cerr << "Error: Invalid register in instruction '" << raw_line.mnemonic
+                                  << "' at line " << raw_line.line << "\n";
+                        continue;
+                    }
+                } else {
+                    rs2 = inst_def->rs2; // 使用固定的 rs2 编码
+                }
+                if(rd == 0xFFFFFFFF || rs1 == 0xFFFFFFFF){
                     std::cerr << "Error: Invalid register in instruction '" << raw_line.mnemonic
                               << "' at line " << raw_line.line << "\n";
                     continue;
@@ -170,8 +216,8 @@ void Assembler::Pass2(){
                     break;
                 }
 
-                // load / jalr: op rd, imm(rs1)
-                if(inst_def->opcode == 0x03 || raw_line.mnemonic == "jalr"){
+                // load / load-fp / jalr: op rd, imm(rs1)
+                if(inst_def->opcode == 0x03 || inst_def->opcode == 0x07 || raw_line.mnemonic == "jalr"){
                     if(raw_line.operands.size() != 5 ||
                        raw_line.operands[2] != "(" || raw_line.operands[4] != ")"){
                         std::cerr << "Error: invalid syntax for '" << raw_line.mnemonic

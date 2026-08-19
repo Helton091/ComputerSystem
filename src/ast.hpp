@@ -5,6 +5,8 @@
 #include <memory>
 #include <iostream>
 
+namespace AST {
+
 class Type {
 public:
     virtual ~Type() = default;
@@ -18,10 +20,20 @@ public:
     std::string to_string() override { return "int"; }
 };
 
-struct Param {
+class FloatType : public Type{
+public:
+    int size() const override {return 4;}
+    std::string to_string() override {return "float";}
+};
+
+struct TypedName{
     std::string name;
     std::unique_ptr<Type> type;
+    TypedName(std::string n, std::unique_ptr<Type> t)
+        : name(std::move(n)), type(std::move(t)) {}
 };
+
+using Param = TypedName;
 
 class ASTNode {
 public:
@@ -47,10 +59,19 @@ public:
     }
 };
 
-class NumberNode : public ExprNode {
+class IntNumberNode : public ExprNode {
 public:
     int value;
-    NumberNode(int val) : value(val) {}
+    IntNumberNode(int val) : value(val) {}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "NumberNode(" << value << ")\n";
+    }
+};
+
+class FloatNumberNode : public ExprNode{
+public:
+    float value;
+    FloatNumberNode(float val) : value(val){}
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "NumberNode(" << value << ")\n";
     }
@@ -122,14 +143,14 @@ public:
 
 class DeclStmt : public StatementNode {
 public:
-    std::string name;
+    TypedName var;
     std::unique_ptr<ExprNode> init;
 
-    DeclStmt(std::string n, std::unique_ptr<ExprNode> i = nullptr)
-        : name(std::move(n)), init(std::move(i)) {}
+    DeclStmt(TypedName v, std::unique_ptr<ExprNode> i = nullptr)
+        : var(std::move(v)), init(std::move(i)) {}
 
     void dump(int indent = 0) const override {
-        std::cout << std::string(indent, ' ') << "DeclStmt(" << name << ")\n";
+        std::cout << std::string(indent, ' ') << "DeclStmt(" << var.name << ")\n";
         if (init) init->dump(indent + 2);
     }
 };
@@ -224,3 +245,5 @@ public:
         }
     }
 };
+
+} // namespace AST

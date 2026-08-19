@@ -11,6 +11,8 @@ class Computer{
 private:
     std::vector<uint8_t> MEM;
     uint32_t RegFile[32] = {0};
+    uint32_t FRegFile[32] = {0};
+    uint32_t fcsr = 0;
     uint32_t PC = 0;
     bool halted = false;
 
@@ -30,7 +32,10 @@ public:
     void reset_halt() { halted = false; }
     uint32_t get_pc() const { return PC; }
     uint32_t get_reg(uint8_t idx) const { return RegFile[idx]; }
-
+    uint32_t get_freg(uint8_t idx) const{ return idx < 32 ? FRegFile[idx] : 0;}
+    void set_freg(uint8_t idx, uint32_t value){if(idx < 32) FRegFile[idx] = value;}
+    uint32_t get_fcsr() const { return fcsr; }
+    void set_fcsr(uint32_t val) { fcsr = val; }
     // 注册调试回调（传 nullptr 或空 lambda 可清除）
     void set_trace(std::function<void(const Computer&)> cb) {
         on_step = std::move(cb);
