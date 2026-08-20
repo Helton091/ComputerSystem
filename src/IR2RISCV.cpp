@@ -73,13 +73,13 @@ void IR2RISCV::gen_program(const Module* mod){
                 auto* c = dynamic_cast<ConstantInt*>(glob->init_value);
                 int val = 0;
                 if(c) val = c->i_val;
-                else throw std::runtime_error("int global variable should only be initialized with int literall");
+                else throw std::runtime_error("[IR2RISCV] int global variable '" + glob->name + "' should only be initialized with an int literal");
                 emit(".word " + std::to_string(val));
             } else if(glob->type == FloatType::get()){
                 auto* c = dynamic_cast<ConstantFloat*>(glob->init_value);
                 uint32_t bits = 0;
                 if(c) bits = float_to_bits(c->f_val);
-                else throw std::runtime_error("float global variable should only be initialized with float literall");
+                else throw std::runtime_error("[IR2RISCV] float global variable '" + glob->name + "' should only be initialized with a float literal");
                 std::stringstream ss;
                 ss << "0x" << std::hex << bits;
                 emit(".word " + ss.str());
@@ -108,7 +108,7 @@ void IR2RISCV::gen_function(const Function* func){
         } else if(arg->type == FloatType::get()){
             arg_reg_of_[arg.get()] = "fa" + std::to_string(float_arg_count++);
         } else {
-            throw std::runtime_error("unsupported argument type");
+            throw std::runtime_error("[IR2RISCV] unsupported argument type '" + arg->type->to_string() + "' in function '" + func->name + "'");
         }
     }
 
@@ -339,7 +339,7 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
         }
         case Opcode::PHI:
         default:
-            throw std::runtime_error("unknown opcode");
+            throw std::runtime_error("[IR2RISCV] unknown opcode " + std::to_string(static_cast<int>(inst->op)) + " in function '" + func->name + "'");
         }
     }
 }

@@ -63,7 +63,7 @@ public:
     }
     void LoadSegment(const uint8_t* data, size_t size, uint32_t base_addr){
         if(base_addr + size > MEM_SIZE){
-            throw std::runtime_error("segment exceeds memory size");
+            throw std::runtime_error("[Simulator] segment exceeds memory size: base=0x" + std::to_string(base_addr) + " size=" + std::to_string(size));
         }
         for(size_t i = 0; i < size; ++i){
             MEM[base_addr + i] = data[i];

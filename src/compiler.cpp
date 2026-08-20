@@ -23,10 +23,6 @@ void Compiler::compile() {
 
     Lexer lexer(source_code);
     tokens = lexer.tokenize();
-    if (lexer.has_error()) {
-        has_error = true;
-        return;
-    }
 
     Parser parser(tokens);
     std::unique_ptr<AST::ProgramNode> ast = parser.parse();

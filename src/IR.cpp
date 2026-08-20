@@ -9,7 +9,7 @@ void Value::remove_use(User* u){
             return;
         }
     }
-    throw std::runtime_error("when remove user" + u->name + " in " + name + ", didn't find " + u->name);
+    throw std::runtime_error("[IR] when remove user " + u->name + " in " + name + ", didn't find " + u->name);
 }
 
 void Value::replace_all_uses_with(Value* v){
@@ -38,7 +38,7 @@ void User::drop_operands(){
 
 void Instruction::erase_from_parent(){
     if(!parent) return;
-    if(!users.empty()) throw std::runtime_error("erase_from_parent: instruction still has users: " + name);
+    if(!users.empty()) throw std::runtime_error("[IR] erase_from_parent: instruction '" + name + "' still has users");
     std::vector<std::unique_ptr<Instruction>>& insts = parent->insts;
     for(auto it = insts.begin();it != insts.end(); ++it){
         if(it->get() == this){
@@ -61,7 +61,7 @@ bool BasicBlock::is_terminated() const{
 }
 
 Instruction* BasicBlock::add_inst(std::unique_ptr<Instruction> inst){
-    if(is_terminated()) throw std::runtime_error("cannot add a new instruction to a terminated block");
+    if(is_terminated()) throw std::runtime_error("[IR] cannot add a new instruction to terminated block '" + name + "'");
     inst->parent = this;
     insts.push_back(std::move(inst));
     return insts.back().get();
@@ -87,14 +87,14 @@ GlobalVariable* Module::find_global(const std::string& name) const{
 }
 
 GlobalVariable* Module::add_global(const std::string& name, Type* type, Value* init){
-    if(find_global(name)) throw std::runtime_error("duplicated global variable " + name);
+    if(find_global(name)) throw std::runtime_error("[IR] duplicated global variable '" + name + "'");
     globals.push_back(std::make_unique<GlobalVariable>(type,name,init));
     global_map_[name] = globals.back().get();
     return globals.back().get();
 }
 
 Function* Module::add_function(const std::string& name, Type* typ){
-    if(find_function(name)) throw std::runtime_error("duplicated function " + name);
+    if(find_function(name)) throw std::runtime_error("[IR] duplicated function '" + name + "'");
     functions.push_back(std::make_unique<Function>(name,typ));
     function_map_[name] = functions.back().get();
     return functions.back().get();
@@ -276,11 +276,11 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::DIV:
     case Opcode::REM:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, there should be exactly 2 operands");
+        if(operands.size() != 2) throw std::runtime_error("[IR] for ADD/SUB/MUL/DIV/REM, there should be exactly 2 operands");
         if(operands[0]->type != IntType::get() || operands[1]->type != IntType::get())
-            throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, operands must be i32");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, operands' type must be equal");
-        if(type != IntType::get()) throw std::runtime_error("for ADD/SUB/MUL/DIV/REM, the result's type must be i32");
+            throw std::runtime_error("[IR] for ADD/SUB/MUL/DIV/REM, operands must be i32");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("[IR] for ADD/SUB/MUL/DIV/REM, operands' type must be equal");
+        if(type != IntType::get()) throw std::runtime_error("[IR] for ADD/SUB/MUL/DIV/REM, the result's type must be i32");
     }
     break;
     case Opcode::LT:
@@ -290,17 +290,17 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::EQ:
     case Opcode::NE:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, there should be exactly 2 operands");
+        if(operands.size() != 2) throw std::runtime_error("[IR] for LT/GT/LE/GE/EQ/NE, there should be exactly 2 operands");
         if(operands[0]->type != IntType::get() || operands[1]->type != IntType::get())
-            throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, operands must be i32");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, operands' type must be equal");
-        if(type != IntType::get()) throw std::runtime_error("for LT/GT/LE/GE/EQ/NE, the result's type must be i32");
+            throw std::runtime_error("[IR] for LT/GT/LE/GE/EQ/NE, operands must be i32");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("[IR] for LT/GT/LE/GE/EQ/NE, operands' type must be equal");
+        if(type != IntType::get()) throw std::runtime_error("[IR] for LT/GT/LE/GE/EQ/NE, the result's type must be i32");
     }
     break;
     case Opcode::NEG:{
-        if(new_inst->operands.size() != 1) throw std::runtime_error("negation should have only one operand");
-        if(new_inst->operands[0]->type != IntType::get()) throw std::runtime_error("negation operand must be i32");
-        if(type != IntType::get()) throw std::runtime_error("negation result must be i32");
+        if(new_inst->operands.size() != 1) throw std::runtime_error("[IR] negation should have only one operand");
+        if(new_inst->operands[0]->type != IntType::get()) throw std::runtime_error("[IR] negation operand must be i32");
+        if(type != IntType::get()) throw std::runtime_error("[IR] negation result must be i32");
     }
     break;
     case Opcode::FADD:
@@ -308,10 +308,10 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::FMUL:
     case Opcode::FDIV:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, there should be exactly 2 operands");
+        if(operands.size() != 2) throw std::runtime_error("[IR] for FADD/FSUB/FMUL/FDIV, there should be exactly 2 operands");
         if(operands[0]->type != FloatType::get() || operands[1]->type != FloatType::get())
-            throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, operands must be float");
-        if(type != FloatType::get()) throw std::runtime_error("for FADD/FSUB/FMUL/FDIV, the result's type must be float");
+            throw std::runtime_error("[IR] for FADD/FSUB/FMUL/FDIV, operands must be float");
+        if(type != FloatType::get()) throw std::runtime_error("[IR] for FADD/FSUB/FMUL/FDIV, the result's type must be float");
     }
     break;
     case Opcode::FLT:
@@ -321,21 +321,21 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     case Opcode::FEQ:
     case Opcode::FNE:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, there should be exactly 2 operands");
+        if(operands.size() != 2) throw std::runtime_error("[IR] for FLT/FGT/FLE/FGE/FEQ/FNE, there should be exactly 2 operands");
         if(operands[0]->type != FloatType::get() || operands[1]->type != FloatType::get())
-            throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, operands must be float");
-        if(type != IntType::get()) throw std::runtime_error("for FLT/FGT/FLE/FGE/FEQ/FNE, the result's type must be i32");
+            throw std::runtime_error("[IR] for FLT/FGT/FLE/FGE/FEQ/FNE, operands must be float");
+        if(type != IntType::get()) throw std::runtime_error("[IR] for FLT/FGT/FLE/FGE/FEQ/FNE, the result's type must be i32");
     }
     break;
     case Opcode::FNEG:{
-        if(new_inst->operands.size() != 1) throw std::runtime_error("float negation should have only one operand");
-        if(new_inst->operands[0]->type != FloatType::get()) throw std::runtime_error("float negation operand must be float");
-        if(type != FloatType::get()) throw std::runtime_error("float negation result must be float");
+        if(new_inst->operands.size() != 1) throw std::runtime_error("[IR] float negation should have only one operand");
+        if(new_inst->operands[0]->type != FloatType::get()) throw std::runtime_error("[IR] float negation operand must be float");
+        if(type != FloatType::get()) throw std::runtime_error("[IR] float negation result must be float");
     }
     break;
     case Opcode::LOAD:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 1) throw std::runtime_error("for load, there should be exactly 1 operand");
+        if(operands.size() != 1) throw std::runtime_error("[IR] for load, there should be exactly 1 operand");
         Value* val = operands[0];
 
         bool is_alloca = false;
@@ -345,14 +345,14 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         bool is_global = (dynamic_cast<const GlobalVariable*>(val) != nullptr);
 
         if(!is_alloca && !is_global)
-            throw std::runtime_error("the operand of load must be alloca or global variable");
+            throw std::runtime_error("[IR] the operand of load must be alloca or global variable");
         if(val->type != type)
-            throw std::runtime_error("type of load and its operand must be the same"); 
+            throw std::runtime_error("[IR] type of load and its operand must be the same"); 
     }
     break;
     case Opcode::STORE:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 2) throw std::runtime_error("store should have 2 operands");
+        if(operands.size() != 2) throw std::runtime_error("[IR] store should have 2 operands");
 
         bool is_dest_alloca = false;
         if (auto* ins = dynamic_cast<const Instruction*>(operands[1])) {
@@ -361,47 +361,47 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         bool is_dest_global = dynamic_cast<const GlobalVariable*>(operands[1]) != nullptr;
 
         if(!is_dest_alloca && !is_dest_global)
-            throw std::runtime_error("the destination of store must be alloca or global variable");
-        if(new_inst->type != VoidType::get()) throw std::runtime_error("store's type must be void");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("store's two operands' type must be the same");
+            throw std::runtime_error("[IR] the destination of store must be alloca or global variable");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] store's type must be void");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("[IR] store's two operands' type must be the same");
     }
     break;
     case Opcode::BR:{
         std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 3) throw std::runtime_error("there should be 3 operands of BR");
-        if(!dynamic_cast<BasicBlock*>(operands[1]) || !dynamic_cast<BasicBlock*>(operands[2])) throw std::runtime_error("last two operands of BR must be BasicBlock");
-        if(new_inst->type != VoidType::get()) throw std::runtime_error("BR's type must be void");
+        if(operands.size() != 3) throw std::runtime_error("[IR] there should be 3 operands of BR");
+        if(!dynamic_cast<BasicBlock*>(operands[1]) || !dynamic_cast<BasicBlock*>(operands[2])) throw std::runtime_error("[IR] last two operands of BR must be BasicBlock");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] BR's type must be void");
     }
     break;
     case Opcode::JMP:{
-        if(new_inst->operands.size() != 1) throw std::runtime_error("jmp needs exactly 1 operand");
-        if(!dynamic_cast<BasicBlock*>(new_inst->operands[0])) throw std::runtime_error("jmp target must be a BasicBlock");
-        if(new_inst->type != VoidType::get()) throw std::runtime_error("jmp's type must be void");
+        if(new_inst->operands.size() != 1) throw std::runtime_error("[IR] jmp needs exactly 1 operand");
+        if(!dynamic_cast<BasicBlock*>(new_inst->operands[0])) throw std::runtime_error("[IR] jmp target must be a BasicBlock");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] jmp's type must be void");
     }
     break;
     case Opcode::RET:{
-        if(new_inst->operands.size() != 1) throw std::runtime_error("ret needs exactly 1 operand");
-        if(new_inst->type != VoidType::get()) throw std::runtime_error("ret's type must be void");
+        if(new_inst->operands.size() != 1) throw std::runtime_error("[IR] ret needs exactly 1 operand");
+        if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] ret's type must be void");
     }
     break;
     case Opcode::CALL:{
-        if(new_inst->operands.empty()) throw std::runtime_error("call needs at least the callee");
+        if(new_inst->operands.empty()) throw std::runtime_error("[IR] call needs at least the callee");
         Function* callee = dynamic_cast<Function*>(new_inst->operands[0]);
-        if(!callee) throw std::runtime_error("call's first operand must be a Function");
+        if(!callee) throw std::runtime_error("[IR] call's first operand must be a Function");
         if(new_inst->operands.size() - 1 != callee->args.size())
-            throw std::runtime_error("call argument count mismatch with function " + callee->name);
+            throw std::runtime_error("[IR] call argument count mismatch with function " + callee->name);
         if(new_inst->type != callee->return_type)
-            throw std::runtime_error("call result type must match return type of function " + callee->name);
+            throw std::runtime_error("[IR] call result type must match return type of function '" + callee->name + "'");
         for(size_t i = 0; i < callee->args.size(); ++i){
             if(new_inst->operands[i+1]->type != callee->args[i]->type)
-                throw std::runtime_error("call argument type mismatch with function " + callee->name);
+                throw std::runtime_error("[IR] call argument type mismatch with function " + callee->name);
         }
     }
     break;
     case Opcode::PHI:
-        throw std::runtime_error("PHI is not implemented (mem2reg not in place yet)");
+        throw std::runtime_error("[IR] PHI is not implemented (mem2reg not in place yet)");
     default:
-        throw std::runtime_error("unknown op");
+        throw std::runtime_error("[IR] unknown op");
     }
 
     return bb->add_inst(std::move(new_inst));

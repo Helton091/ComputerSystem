@@ -14,7 +14,7 @@ static bool is_comparison_opcode(Opcode op){
 static void expect_type(Type* expected, Type* actual, const std::string& context){
     if(expected != actual){
         throw std::runtime_error(
-            "type mismatch " + context +
+            "[AST2IR] type mismatch " + context +
             ": expected '" + expected->to_string() +
             "', found '" + actual->to_string() + "'"
         );
@@ -29,7 +29,7 @@ static Opcode binop_opcode(Tok op, Type* operand_type){
     case Tok::STAR:   return flt ? Opcode::FMUL : Opcode::MUL;
     case Tok::SLASH:  return flt ? Opcode::FDIV : Opcode::DIV;
     case Tok::PERCENT:
-        if(flt) throw std::runtime_error("float type does not support modulo operation");
+        if(flt) throw std::runtime_error("[AST2IR] float type does not support modulo operation");
         return Opcode::REM;
     case Tok::LT:     return flt ? Opcode::FLT : Opcode::LT;
     case Tok::LE:     return flt ? Opcode::FLE : Opcode::LE;
@@ -37,7 +37,7 @@ static Opcode binop_opcode(Tok op, Type* operand_type){
     case Tok::GE:     return flt ? Opcode::FGE : Opcode::GE;
     case Tok::EQ:     return flt ? Opcode::FEQ : Opcode::EQ;
     case Tok::NE:     return flt ? Opcode::FNE : Opcode::NE;
-    default: throw std::runtime_error("cannot translate binary token to opcode");
+    default: throw std::runtime_error("[AST2IR] cannot translate binary token " + std::to_string(static_cast<int>(op)) + " to opcode");
     }
 }
 
@@ -45,7 +45,7 @@ static Opcode unop_opcode(Tok op, Type* operand_type){
     bool flt = is_float_type(operand_type);
     switch(op){
     case Tok::SUB: return flt ? Opcode::FNEG : Opcode::NEG;
-    default: throw std::runtime_error("cannot translate unary token to opcode");
+    default: throw std::runtime_error("[AST2IR] cannot translate unary token " + std::to_string(static_cast<int>(op)) + " to opcode");
     }
 }
 
@@ -61,9 +61,9 @@ std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
         } else if(!glob_var->init){
             if(type == IntType::get()) init = module_->get_const(0);
             else if(type == FloatType::get()) init = module_->get_const(0.0f);
-            else throw std::runtime_error("unsupported type for default initialization of global variable '" + glob_var->var.name + "'");
+            else throw std::runtime_error("[AST2IR] unsupported type '" + type->to_string() + "' for default initialization of global variable '" + glob_var->var.name + "'");
         } else {
-            throw std::runtime_error("the init value of global variable must be literal number");
+            throw std::runtime_error("[AST2IR] global variable '" + glob_var->var.name + "' must be initialized with a literal number");
         }
         module_->add_global(glob_var->var.name,type,init);
     }
@@ -93,7 +93,7 @@ void AST2IR::gen_function(AST::FunctionNode* funcnode){
         Argument* new_arg =  curr_func_->args[temp_cnt].get();
         Instruction* addr = curr_func_->add_alloca(arg.name, to_ir_type(arg.type.get()));
         make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{new_arg,addr});
-        if(scope_stack_.back().find(arg.name) != scope_stack_.back().end()) throw std::runtime_error("same name " + arg.name + " in function " + curr_func_->name + "'s arguments list");
+        if(scope_stack_.back().find(arg.name) != scope_stack_.back().end()) throw std::runtime_error("[AST2IR] duplicate name '" + arg.name + "' in function '" + curr_func_->name + "' argument list");
         scope_stack_.back()[arg.name] = addr;
         ++temp_cnt;
     }
@@ -123,7 +123,7 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{ret_val});
     } else if(auto ds = dynamic_cast<AST::DeclStmt*>(stmt)){
         std::unordered_map<std::string,Instruction*>& curr_stack =  scope_stack_.back();
-        if(curr_stack.find(ds->var.name) != curr_stack.end()) throw std::runtime_error("redefined variable " + ds->var.name);
+        if(curr_stack.find(ds->var.name) != curr_stack.end()) throw std::runtime_error("[AST2IR] redefined variable '" + ds->var.name + "' in function '" + curr_func_->name + "'");
         Instruction* di = curr_func_->add_alloca(ds->var.name, to_ir_type(ds->var.type.get()));
         curr_stack[ds->var.name] = di;
         if(ds->init){
@@ -138,7 +138,7 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
             } else if(dynamic_cast<AST::FloatType*>(ds->var.type.get())){
                 v = module_->get_const(0.0f);
             } else {
-                throw std::runtime_error("unsupported type for default initialization of variable '" + ds->var.name + "'");
+                throw std::runtime_error("[AST2IR] unsupported type '" + ds->var.type->to_string() + "' for default initialization of variable '" + ds->var.name + "' in function '" + curr_func_->name + "'");
             }
             make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{v,di});
         }
@@ -208,7 +208,7 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto bn = dynamic_cast<AST::BinaryExpr*>(expr)){
         Value* o1 = gen_expr(bn->left.get());
         Value* o2 = gen_expr(bn->right.get());
-        if(o1->type != o2->type) throw std::runtime_error("for binary expression, their operands'type shoud be equal");
+        if(o1->type != o2->type) throw std::runtime_error("[AST2IR] binary expression operands type mismatch: left is '" + o1->type->to_string() + "', right is '" + o2->type->to_string() + "' in function '" + curr_func_->name + "'");
         Opcode op = binop_opcode(bn->op,o1->type);
         Type* result_type = is_comparison_opcode(op) ? IntType::get() : o1->type;
         return make_inst(curr_bb_,op,result_type,new_temp_name(),{o1,o2});
@@ -217,20 +217,20 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         return make_inst(curr_bb_,unop_opcode(un->op,o->type),o->type,new_temp_name(),{o});
     } else if(auto is = dynamic_cast<AST::IdentifierNode*>(expr)){
         Value* alloca = find_variable(is->name);
-        if(!alloca) throw std::runtime_error("undefined yet used variable " + is->name);
+        if(!alloca) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
         return make_inst(curr_bb_, Opcode::LOAD, alloca->type, new_temp_name(), {alloca});
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
         Value* rhs_inst = gen_expr(ae->rhs.get());
         Value* alloca_left = find_variable(ae->lhs->name);
-        if(!alloca_left) throw std::runtime_error("undefined yet used variable " + ae->lhs->name);
+        if(!alloca_left) throw std::runtime_error("[AST2IR] undefined variable '" + ae->lhs->name + "' assigned to in function '" + curr_func_->name + "'");
         expect_type(alloca_left->type, rhs_inst->type,
                     "in assignment to variable '" + ae->lhs->name + "'");
         make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{rhs_inst,alloca_left});
         return rhs_inst;
     } else if(auto ce = dynamic_cast<AST::CallExpr*>(expr)){
         Function* func = module_->find_function(ce->name);
-        if(!func) throw std::runtime_error("undefined function " + ce->name);
-        if(func->args.size() != ce->args.size()) throw std::runtime_error("function " + ce->name + "should have " + std::to_string(func->args.size()) + "argument, but got " + std::to_string(ce->args.size()) + " arguments");
+        if(!func) throw std::runtime_error("[AST2IR] undefined function '" + ce->name + "' called in function '" + curr_func_->name + "'");
+        if(func->args.size() != ce->args.size()) throw std::runtime_error("[AST2IR] function '" + ce->name + "' expects " + std::to_string(func->args.size()) + " argument(s), but got " + std::to_string(ce->args.size()) + " in function '" + curr_func_->name + "'");
         std::vector<Value*> args;
         args.push_back(func);
         for(size_t i = 0; i < ce->args.size(); ++i){
@@ -245,7 +245,7 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
 
     }
     else{
-        throw std::runtime_error("unknown node type");
+        throw std::runtime_error("[AST2IR] unknown AST expression node type in function '" + curr_func_->name + "'");
     }
 
 }

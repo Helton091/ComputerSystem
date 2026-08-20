@@ -552,13 +552,13 @@ static uint32_t read_u32(std::ifstream& file){
 void Computer::LoadProgram(const std::string& path){
     std::ifstream file(path, std::ios::binary);
     if(!file){
-        throw std::runtime_error("failed to open binary: " + path);
+        throw std::runtime_error("[Simulator] failed to open binary: '" + path + "'");
     }
 
     // 1. 读 header
     uint32_t magic = read_u32(file);
     if(magic != 0x434D4D00){
-        throw std::runtime_error("invalid CMM binary: bad magic");
+        throw std::runtime_error("[Simulator] invalid CMM binary: bad magic " + std::to_string(magic) + " (expected 0x434D4D00) in '" + path + "'");
     }
     uint32_t text_size = read_u32(file);
     uint32_t data_base = read_u32(file);

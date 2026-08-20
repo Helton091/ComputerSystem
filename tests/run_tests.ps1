@@ -67,7 +67,18 @@ $tests = @(
     @{ name = "global/shadow";     expect = 2 },
     @{ name = "global/expr";       expect = 7 },
     @{ name = "global/float_global"; expect_fa0 = 2.5 },
-    @{ name = "global/float_write";  expect_fa0 = 1.5 }
+    @{ name = "global/float_write";  expect_fa0 = 1.5 },
+    # error cases (expect compile-time failure)
+    @{ name = "error/redefined_var";       expect_compile_error = $true },
+    @{ name = "error/out_of_scope";        expect_compile_error = $true },
+    @{ name = "error/undefined_var";       expect_compile_error = $true },
+    @{ name = "error/undefined_func";      expect_compile_error = $true },
+    @{ name = "error/func_arg_count";      expect_compile_error = $true },
+    @{ name = "error/type_assign_int_to_float"; expect_compile_error = $true },
+    @{ name = "error/type_return_mismatch";     expect_compile_error = $true },
+    @{ name = "error/global_init_var_ref";      expect_compile_error = $true },
+    @{ name = "error/condition_float";          expect_compile_error = $true },
+    @{ name = "error/mod_float";                expect_compile_error = $true }
 )
 $all_pass = $true
 
@@ -75,7 +86,8 @@ foreach ($t in $tests) {
     $name = $t.name
     $has_a0 = $t.ContainsKey("expect")
     $has_fa0 = $t.ContainsKey("expect_fa0")
-    $expect_str = if ($has_a0) { "a0=$($t.expect)" } elseif ($has_fa0) { "fa0=$($t.expect_fa0)" } else { "?" }
+    $expect_compile_error = $t.ContainsKey("expect_compile_error") -and $t.expect_compile_error
+    $expect_str = if ($has_a0) { "a0=$($t.expect)" } elseif ($has_fa0) { "fa0=$($t.expect_fa0)" } elseif ($expect_compile_error) { "compile error" } else { "?" }
     $base = $name -replace '[/\\]','_'
     $src = "$test_dir\$name.cmm"
     $asm = "temp\$base.s"
@@ -84,7 +96,19 @@ foreach ($t in $tests) {
     Write-Host "===== $name (expect $expect_str) =====" -ForegroundColor Cyan
 
     $compile_output = .\compiler.exe $src $asm 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    $compile_failed = ($LASTEXITCODE -ne 0)
+    if ($expect_compile_error) {
+        if ($compile_failed) {
+            Write-Host "[PASS] compile error as expected" -ForegroundColor Green
+            Write-Host ($compile_output -join "`n") -ForegroundColor DarkGray
+        } else {
+            Write-Host "[FAIL] expected compile error but compilation succeeded" -ForegroundColor Red
+            $all_pass = $false
+        }
+        continue
+    }
+
+    if ($compile_failed) {
         Write-Host "[FAIL] compile error" -ForegroundColor Red
         Write-Host ($compile_output -join "`n") -ForegroundColor DarkGray
         $all_pass = $false
@@ -132,6 +156,8 @@ foreach ($t in $tests) {
 Write-Host ""
 if ($all_pass) {
     Write-Host "===== ALL TESTS PASSED =====" -ForegroundColor Green
+    exit 0
 } else {
     Write-Host "===== SOME TESTS FAILED =====" -ForegroundColor Red
+    exit 1
 }

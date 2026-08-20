@@ -209,7 +209,7 @@ void Assembler::Pass2(){
 
         if(raw_line.mnemonic == ".word"){
             if(raw_line.operands.size() != 1){
-                throw std::runtime_error(".word should have exactly one operand");
+                throw std::runtime_error("[Assembler] .word should have exactly one operand at line " + std::to_string(raw_line.line));
             }
             int32_t val = parse_imm(raw_line.operands[0]);
             emit_word(static_cast<uint32_t>(val));

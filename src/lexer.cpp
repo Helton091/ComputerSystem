@@ -49,9 +49,7 @@ std::vector<Token> Lexer::tokenize() {
                     ++i;
                 }
                 if (!closed) {
-                    std::cerr << "Error: unterminated block comment at line " << line_no << "\n";
-                    has_error_ = true;
-                    break;
+                    throw std::runtime_error("[Lexer] unterminated block comment at line " + std::to_string(line_no));
                 }
                 i += 2;  // 跳过 */
                 break;
@@ -82,9 +80,7 @@ std::vector<Token> Lexer::tokenize() {
                 tokens.push_back({Tok::NE, "!=", line_no, col_no});
                 i += 2; col_no += 2;
             } else {
-                std::cerr << "Error: unexpected character '!' at line " << line_no << " col " << col_no << "\n";
-                has_error_ = true;
-                ++i; ++col_no;
+                throw std::runtime_error("[Lexer] unexpected character '!' at line " + std::to_string(line_no) + " col " + std::to_string(col_no));
             }
             break;
         default:
@@ -121,9 +117,7 @@ std::vector<Token> Lexer::tokenize() {
                 }
                 col_no += static_cast<int>(i - start);
             } else {
-                std::cerr << "Error: unexpected character '" << c << "' at line " << line_no << " col " << col_no << "\n";
-                has_error_ = true;
-                ++i; ++col_no;
+                throw std::runtime_error(std::string("[Lexer] unexpected character '") + static_cast<char>(c) + "' at line " + std::to_string(line_no) + " col " + std::to_string(col_no));
             }
             break;
         }

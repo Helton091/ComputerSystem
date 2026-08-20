@@ -37,7 +37,7 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
     case Tok::ASSIGN: {
         auto ident = dynamic_cast<IdentifierNode*>(left.get());
         if (!ident) {
-            throw std::runtime_error("left side of assignment must be a variable");
+            throw std::runtime_error("[Parser] left side of assignment must be a variable at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
         }
         auto ident_ptr = std::unique_ptr<IdentifierNode>(
             static_cast<IdentifierNode*>(left.release())
@@ -45,7 +45,7 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
         return std::make_unique<AssignmentExpr>(std::move(ident_ptr), std::move(right));
     }
     default:
-        throw std::runtime_error("unknown led token");
+        throw std::runtime_error("[Parser] unknown led token '" + token.text + "' at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
     }
 }
 
@@ -79,7 +79,7 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
         return std::make_unique<IdentifierNode>(token.text);
     }
     default:
-        throw std::runtime_error("unknown nud token");
+        throw std::runtime_error("[Parser] unknown nud token '" + token.text + "' at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
     }
 }
 
@@ -177,8 +177,9 @@ std::vector<Param> Parser::parse_parameters() {
         const Token& name_token = expect(Tok::IDENT, "Expected parameter name");
         if (seen.count(name_token.text)) {
             throw std::runtime_error(
-                "duplicate parameter '" + name_token.text +
-                "' at line " + std::to_string(name_token.line_no)
+                "[Parser] duplicate parameter '" + name_token.text +
+                "' at line " + std::to_string(name_token.line_no) +
+                ", col " + std::to_string(name_token.col_no)
             );
         }
         seen.insert(name_token.text);
@@ -209,10 +210,11 @@ std::unique_ptr<ProgramNode> Parser::parse_program() {
     while (pos < tokens.size() && tokens[pos].type != Tok::EOF_TOK) {
 
         if (pos+2 >= tokens.size() || (tokens[pos].type != Tok::KW_INT && tokens[pos].type != Tok::KW_FLOAT) || tokens[pos+1].type != Tok::IDENT) {
-            std::string err_msg = "only declarations and functions are allowed at top level, but got '" +
-                tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no);
+            std::string err_msg = "[Parser] only declarations and functions are allowed at top level, but got '" +
+                tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no) +
+                ", col " + std::to_string(tokens[pos].col_no);
             if(pos + 1 < tokens.size())
-                err_msg += " and got " + tokens[pos+1].text + " at line " + std::to_string(tokens[pos+1].line_no);
+                err_msg += " and got " + tokens[pos+1].text + " at line " + std::to_string(tokens[pos+1].line_no) + ", col " + std::to_string(tokens[pos+1].col_no);
             throw std::runtime_error(
                 err_msg
             );

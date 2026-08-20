@@ -14,15 +14,15 @@ public:
 
     const Token& peek() {
         if (pos < tokens.size()) return tokens[pos];
-        throw std::runtime_error("Unexpected end of file");
+        throw std::runtime_error("[Parser] unexpected end of file");
     }
     const Token& advance() {
         if (pos < tokens.size()) return tokens[pos++];
-        throw std::runtime_error("Unexpected end of file");
+        throw std::runtime_error("[Parser] unexpected end of file");
     }
     const Token& previous() {
         if (pos > 0) return tokens[pos - 1];
-        throw std::runtime_error("No previous token");
+        throw std::runtime_error("[Parser] no previous token");
     }
     const Token& expect(Tok type, const std::string& err_msg) {
         if (pos < tokens.size() && tokens[pos].type == type) {
@@ -30,7 +30,7 @@ public:
         }
         const Token& tok = peek();
         throw std::runtime_error(
-            err_msg + " at line " + std::to_string(tok.line_no) +
+            "[Parser] " + err_msg + " at line " + std::to_string(tok.line_no) +
             ", col " + std::to_string(tok.col_no)
         );
     }
@@ -51,7 +51,7 @@ public:
             return std::make_unique<AST::FloatType>();
         default:
             throw std::runtime_error(
-                err_msg + " at line " + std::to_string(token.line_no) +
+                "[Parser] " + err_msg + " at line " + std::to_string(token.line_no) +
                 ", col " + std::to_string(token.col_no)
             );
         } 
