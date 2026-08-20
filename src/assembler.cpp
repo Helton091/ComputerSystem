@@ -31,21 +31,46 @@ void Assembler::Emit(){
         std::cerr << "Error: cannot open output file '" << output_path << "'\n";
         return;
     }
+
+    auto write_u32 = [&ofs](uint32_t value){
+        ofs.put(static_cast<char>(value & 0xFF));
+        ofs.put(static_cast<char>((value >> 8) & 0xFF));
+        ofs.put(static_cast<char>((value >> 16) & 0xFF));
+        ofs.put(static_cast<char>((value >> 24) & 0xFF));
+    };
+
+    BinHeader header;
+    header.text_size = static_cast<uint32_t>(machine_codes.size()) * 4;
+    header.data_base = DATA_BASE;
+
+    write_u32(header.magic);
+    write_u32(header.text_size);
+    write_u32(header.data_base);
+
     for(uint32_t code : machine_codes) {
-        ofs.put(static_cast<char>(code & 0xFF));
-        ofs.put(static_cast<char>((code >> 8) & 0xFF));
-        ofs.put(static_cast<char>((code >> 16) & 0xFF));
-        ofs.put(static_cast<char>((code >> 24) & 0xFF));
+        write_u32(code);
+    }
+
+    if(!data_bytes.empty()){
+        ofs.write(reinterpret_cast<const char*>(data_bytes.data()), data_bytes.size());
     }
 }
 
 void Assembler::Pass2(){
     for(const RawLine& raw_line : raw_lines){
         if(raw_line.mnemonic.empty()) continue;
-        uint32_t current_addr = machine_codes.size() * 4;
+        uint32_t current_addr = machine_codes.size() * 4 + TEXT_BASE;
 
+        if(raw_line.mnemonic == ".text"){
+            curr_section_ = Section::TEXT;
+            continue;
+        }
+        if(raw_line.mnemonic == ".data"){
+            curr_section_ = Section::DATA;
+            continue;
+        }
         if(raw_line.mnemonic == "nop"){
-            machine_codes.push_back(0x00000013);
+            emit_word(0x00000013);
             continue;
         }
         if(raw_line.mnemonic == "li"){
@@ -60,16 +85,16 @@ void Assembler::Pass2(){
             }
             int64_t imm = parse_imm64(raw_line.operands[1]);
             if(imm >= -2048 && imm <= 2047){
-                machine_codes.push_back(
+                emit_word(
                     (static_cast<uint32_t>(imm & 0xFFF) << 20) | (rd << 7) | 0x13
                 );
             } else {
                 int32_t upper = static_cast<int32_t>((imm + 0x800) >> 12);
                 int32_t lower = static_cast<int32_t>(imm - (static_cast<int64_t>(upper) << 12));
-                machine_codes.push_back(
+                emit_word(
                     (static_cast<uint32_t>(upper & 0xFFFFF) << 12) | (rd << 7) | 0x37
                 );
-                machine_codes.push_back(
+                emit_word(
                     (static_cast<uint32_t>(lower & 0xFFF) << 20) | (rd << 15) | (0 << 12) | (rd << 7) | 0x13
                 );
             }
@@ -86,7 +111,7 @@ void Assembler::Pass2(){
                 std::cerr << "Error: Invalid register in 'mv' at line " << raw_line.line << "\n";
                 continue;
             }
-            machine_codes.push_back(
+            emit_word(
                 (rs1 << 15) | (rd << 7) | 0x13
             );
             continue;
@@ -97,7 +122,7 @@ void Assembler::Pass2(){
                 continue;
             }
             uint32_t imm = get_offset(label_addresses, raw_line.operands[0], current_addr, raw_line.line);
-            machine_codes.push_back(
+            emit_word(
                 (((imm >> 20) & 0x1) << 31) |
                 (((imm >> 1) & 0x3FF) << 21) |
                 (((imm >> 11) & 0x1) << 20) |
@@ -112,7 +137,7 @@ void Assembler::Pass2(){
                 continue;
             }
             uint32_t imm = get_offset(label_addresses, raw_line.operands[0], current_addr, raw_line.line);
-            machine_codes.push_back(
+            emit_word(
                 (((imm >> 20) & 0x1) << 31) |
                 (((imm >> 1) & 0x3FF) << 21) |
                 (((imm >> 11) & 0x1) << 20) |
@@ -126,7 +151,7 @@ void Assembler::Pass2(){
                 std::cerr << "Error: 'ret' expects no operands at line " << raw_line.line << "\n";
                 continue;
             }
-            machine_codes.push_back(
+            emit_word(
                 (1 << 15) | (0 << 12) | (0 << 7) | 0x67
             );
             continue;
@@ -143,7 +168,7 @@ void Assembler::Pass2(){
                 continue;
             }
             // fmv.s rd, rs1 是 fsgnj.s rd, rs1, rs1 的伪指令
-            machine_codes.push_back(
+            emit_word(
                 (0x10 << 25) | (rs1 << 20) | (rs1 << 15) | (0 << 12) | (rd << 7) | 0x53
             );
             continue;
@@ -160,9 +185,34 @@ void Assembler::Pass2(){
                 continue;
             }
             // fneg.s rd, rs1 是 fsgnjn.s rd, rs1, rs1 的伪指令
-            machine_codes.push_back(
+            emit_word(
                 (0x10 << 25) | (rs1 << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x53
             );
+            continue;
+        }
+
+        if(raw_line.mnemonic == "la"){
+            if(raw_line.operands.size() != 2){
+                // 报错
+            }
+            uint32_t rd = get_reg_index(raw_line.operands[0]);
+            const std::string& label = raw_line.operands[1];
+            uint32_t addr = label_addresses.at(label);
+            int32_t hi = (addr + 0x800) >> 12;
+            int32_t lo = addr - (hi << 12);
+            // lui rd, hi
+            emit_word((static_cast<uint32_t>(hi) << 12) | (rd << 7) | 0x37);
+            // addi rd, rd, lo
+            emit_word((static_cast<uint32_t>(lo & 0xFFF) << 20) | (rd << 15) | (0 << 12) | (rd << 7) | 0x13);
+            continue;
+        }
+
+        if(raw_line.mnemonic == ".word"){
+            if(raw_line.operands.size() != 1){
+                throw std::runtime_error(".word should have exactly one operand");
+            }
+            int32_t val = parse_imm(raw_line.operands[0]);
+            emit_word(static_cast<uint32_t>(val));
             continue;
         }
 
@@ -200,7 +250,7 @@ void Assembler::Pass2(){
                               << "' at line " << raw_line.line << "\n";
                     continue;
                 }
-                machine_codes.push_back(
+                emit_word(
                     (inst_def->funct7 << 25) | (rs2 << 20) | (rs1 << 15) |
                     (inst_def->funct3 << 12) | (rd << 7) | inst_def->opcode
                 );
@@ -208,11 +258,11 @@ void Assembler::Pass2(){
             }
             case Fmt::I: {
                 if(raw_line.mnemonic == "ecall"){
-                    machine_codes.push_back(0x00000073);
+                    emit_word(0x00000073);
                     break;
                 }
                 if(raw_line.mnemonic == "ebreak"){
-                    machine_codes.push_back(0x00100073);
+                    emit_word(0x00100073);
                     break;
                 }
 
@@ -233,7 +283,7 @@ void Assembler::Pass2(){
                         continue;
                     }
                     int32_t imm = parse_imm(raw_line.operands[1]);
-                    machine_codes.push_back(
+                    emit_word(
                         (static_cast<uint32_t>(imm & 0xFFF) << 20) | (rs1 << 15) |
                         (inst_def->funct3 << 12) | (rd << 7) | inst_def->opcode
                     );
@@ -254,7 +304,7 @@ void Assembler::Pass2(){
                     continue;
                 }
                 int32_t imm = parse_imm(raw_line.operands[2]);
-                machine_codes.push_back(
+                emit_word(
                     (static_cast<uint32_t>(imm & 0xFFF) << 20) | (rs1 << 15) |
                     (inst_def->funct3 << 12) | (rd << 7) | inst_def->opcode
                 );
@@ -276,7 +326,7 @@ void Assembler::Pass2(){
                     continue;
                 }
                 int32_t imm = parse_imm(raw_line.operands[1]);
-                machine_codes.push_back(
+                emit_word(
                     (((static_cast<uint32_t>(imm) >> 5) & 0x7F) << 25) | (rs2 << 20) |
                     (rs1 << 15) | (inst_def->funct3 << 12) |
                     ((static_cast<uint32_t>(imm) & 0x1F) << 7) | inst_def->opcode
@@ -302,7 +352,7 @@ void Assembler::Pass2(){
                 } else {
                     imm = parse_imm(raw_line.operands[2]);
                 }
-                machine_codes.push_back(
+                emit_word(
                     (((imm >> 12) & 0x1) << 31) |
                     (((imm >> 5) & 0x3F) << 25) |
                     (rs2 << 20) | (rs1 << 15) |
@@ -326,7 +376,7 @@ void Assembler::Pass2(){
                     continue;
                 }
                 int32_t imm = parse_imm(raw_line.operands[1]);
-                machine_codes.push_back(
+                emit_word(
                     (static_cast<uint32_t>(imm) << 12) | (rd << 7) | inst_def->opcode
                 );
                 break;
@@ -349,7 +399,7 @@ void Assembler::Pass2(){
                 } else {
                     imm = parse_imm(raw_line.operands[1]);
                 }
-                machine_codes.push_back(
+                emit_word(
                     (((imm >> 20) & 0x1) << 31) |
                     (((imm >> 1) & 0x3FF) << 21) |
                     (((imm >> 11) & 0x1) << 20) |
@@ -368,7 +418,6 @@ void Assembler::Pass2(){
 }
 
 void Assembler::Pass1() {
-    uint32_t current_address = 0;
     for(const RawLine& raw_line : raw_lines){
         if(!raw_line.labels.empty()){
             for(const std::string& label : raw_line.labels){
@@ -376,13 +425,35 @@ void Assembler::Pass1() {
                     std::cerr << "Error: Duplicate label '" << label
                               << "' at line " << raw_line.line << "\n";
                 } else {
-                    label_addresses[label] = current_address;
+                    label_addresses[label] = curr_addr();
                 }
             }
         }
-        if(!raw_line.mnemonic.empty()){
-            current_address += get_instruction_size(raw_line);
+        if(raw_line.mnemonic.empty()) continue;
+        if(raw_line.mnemonic == ".text"){
+            curr_section_ = Section::TEXT;
+        } else if(raw_line.mnemonic == ".data"){
+            curr_section_ = Section::DATA;
+        } else if(raw_line.mnemonic == ".word"){
+            curr_addr() += 4; 
         }
+        else {
+            curr_addr() += get_instruction_size(raw_line);
+        }
+
+    }
+}
+
+void Assembler::emit_word(uint32_t word){
+    if(curr_section_== Section::TEXT){
+        machine_codes.push_back(word);
+        next_text_addr_ += 4;
+    } else {
+        data_bytes.push_back(word & 0xFF);
+        data_bytes.push_back((word >> 8) & 0xFF);
+        data_bytes.push_back((word >> 16) & 0xFF);
+        data_bytes.push_back((word >> 24) & 0xFF);
+        next_data_addr_ += 4;
     }
 }
 
@@ -488,6 +559,14 @@ void Assembler::Lexer() {
     lines.clear();
 }
 
+uint32_t& Assembler::curr_addr(){
+    switch(curr_section_){
+    case Section::DATA:
+        return next_data_addr_;
+    case Section::TEXT:
+        return next_text_addr_;
+    }
+}
 void Assembler::read_file_lines(){
         std::ifstream file(path);
         if(!file.is_open()){

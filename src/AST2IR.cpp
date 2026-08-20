@@ -51,6 +51,22 @@ static Opcode unop_opcode(Tok op, Type* operand_type){
 
 std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
     module_ = std::make_unique<Module>();
+    for(const std::unique_ptr<AST::DeclStmt>& glob_var : program->glob_vars){
+        Value* init = nullptr;
+        Type* type = to_ir_type(glob_var->var.type.get());
+        if(auto c = dynamic_cast<AST::IntNumberNode*>(glob_var->init.get())){
+            init = module_->get_const(c->value);
+        } else if(auto c = dynamic_cast<AST::FloatNumberNode*>(glob_var->init.get())){
+            init = module_->get_const(c->value);
+        } else if(!glob_var->init){
+            if(type == IntType::get()) init = module_->get_const(0);
+            else if(type == FloatType::get()) init = module_->get_const(0.0f);
+            else throw std::runtime_error("unsupported type for default initialization of global variable '" + glob_var->var.name + "'");
+        } else {
+            throw std::runtime_error("the init value of global variable must be literal number");
+        }
+        module_->add_global(glob_var->var.name,type,init);
+    }
     for(const std::unique_ptr<AST::FunctionNode>& funcnode : program->functions){
         Function* func = module_->add_function(funcnode->name,to_ir_type(funcnode->return_type.get()));
         for (size_t i = 0; i < funcnode->params.size(); ++i)
@@ -200,12 +216,12 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         Value* o = gen_expr(un->operand.get());
         return make_inst(curr_bb_,unop_opcode(un->op,o->type),o->type,new_temp_name(),{o});
     } else if(auto is = dynamic_cast<AST::IdentifierNode*>(expr)){
-        Instruction* alloca = find_alloc(is->name);
+        Value* alloca = find_variable(is->name);
         if(!alloca) throw std::runtime_error("undefined yet used variable " + is->name);
         return make_inst(curr_bb_, Opcode::LOAD, alloca->type, new_temp_name(), {alloca});
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
         Value* rhs_inst = gen_expr(ae->rhs.get());
-        Instruction* alloca_left = find_alloc(ae->lhs->name);
+        Value* alloca_left = find_variable(ae->lhs->name);
         if(!alloca_left) throw std::runtime_error("undefined yet used variable " + ae->lhs->name);
         expect_type(alloca_left->type, rhs_inst->type,
                     "in assignment to variable '" + ae->lhs->name + "'");
@@ -241,6 +257,14 @@ Instruction* AST2IR::find_alloc(const std::string& name){
         }
     }
     return nullptr;
+}
+
+Value* AST2IR::find_variable(const std::string& name){
+    Instruction* local = find_alloc(name);
+    if(local) return local;
+
+    GlobalVariable* glob = module_->find_global(name);
+    return glob;
 }
 
 Type* AST2IR::to_ir_type(AST::Type* ast_type){

@@ -237,11 +237,17 @@ public:
 
 class ProgramNode : public ASTNode {
 public:
+    std::vector<std::unique_ptr<DeclStmt>> glob_vars;
     std::vector<std::unique_ptr<FunctionNode>> functions;
     void dump(int indent = 0) const override {
         std::cout << std::string(indent, ' ') << "ProgramNode\n";
+        std::cout << std::string(indent + 2, ' ') << "Globals:\n";
+        for (const auto& gv : glob_vars) {
+            gv->dump(indent + 4);
+        }
+        std::cout << std::string(indent + 2, ' ') << "Functions:\n";
         for (const auto& func : functions) {
-            func->dump(indent + 2);
+            func->dump(indent + 4);
         }
     }
 };

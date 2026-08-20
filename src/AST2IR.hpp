@@ -10,7 +10,9 @@ private:
     Function* curr_func_ = nullptr;
     BasicBlock* curr_bb_ = nullptr;
     std::vector<std::unordered_map<std::string, Instruction*>> scope_stack_;
+    //for global variable, it stores in module_
     Instruction* find_alloc(const std::string& name);
+    Value* find_variable(const std::string& name);
     void enter_scope(){scope_stack_.push_back(std::unordered_map<std::string, Instruction*>{});}
     void exit_scope(){if(!scope_stack_.empty()) scope_stack_.pop_back();}
     int block_counter_ = 0;

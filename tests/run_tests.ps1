@@ -58,7 +58,16 @@ $tests = @(
     @{ name = "float/lt";     expect = 1 },
     @{ name = "float/eq";     expect = 1 },
     @{ name = "float/func";   expect_fa0 = 4.0 },
-    @{ name = "float/param";  expect_fa0 = 4.0 }
+    @{ name = "float/param";  expect_fa0 = 4.0 },
+    # global
+    @{ name = "global/read";       expect = 10 },
+    @{ name = "global/write";      expect = 7 },
+    @{ name = "global/init";       expect = 42 },
+    @{ name = "global/cross_func"; expect = 10 },
+    @{ name = "global/shadow";     expect = 2 },
+    @{ name = "global/expr";       expect = 7 },
+    @{ name = "global/float_global"; expect_fa0 = 2.5 },
+    @{ name = "global/float_write";  expect_fa0 = 1.5 }
 )
 $all_pass = $true
 
@@ -74,16 +83,18 @@ foreach ($t in $tests) {
     Write-Host ""
     Write-Host "===== $name (expect $expect_str) =====" -ForegroundColor Cyan
 
-    .\compiler.exe $src $asm 2>&1 | Out-Null
+    $compile_output = .\compiler.exe $src $asm 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] compile error" -ForegroundColor Red
+        Write-Host ($compile_output -join "`n") -ForegroundColor DarkGray
         $all_pass = $false
         continue
     }
 
-    .\assembler.exe $asm -o $bin 2>&1 | Out-Null
+    $assemble_output = .\assembler.exe $asm -o $bin 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] assemble error" -ForegroundColor Red
+        Write-Host ($assemble_output -join "`n") -ForegroundColor DarkGray
         $all_pass = $false
         continue
     }

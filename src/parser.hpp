@@ -64,7 +64,7 @@ public:
     std::unique_ptr<AST::BlockStatement> parse_block();
     std::unique_ptr<AST::StatementNode> parse_statement();
     std::unique_ptr<AST::ReturnStatement> parse_return_statement();
-    std::unique_ptr<AST::StatementNode> parse_declaration_statement();
+    std::unique_ptr<AST::DeclStmt> parse_declaration_statement();
 
     // Pratt 表达式解析
     std::unique_ptr<AST::ExprNode> parse_expression(int min_bp = 0);

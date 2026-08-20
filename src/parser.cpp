@@ -83,7 +83,7 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
     }
 }
 
-std::unique_ptr<StatementNode> Parser::parse_declaration_statement() {
+std::unique_ptr<DeclStmt> Parser::parse_declaration_statement() {
     std::unique_ptr<Type> ty = parse_type_tok();
     const Token& token = expect(Tok::IDENT, "expect variable name");
     std::string name = token.text;
@@ -207,8 +207,25 @@ std::unique_ptr<ProgramNode> Parser::parse() {
 std::unique_ptr<ProgramNode> Parser::parse_program() {
     std::unique_ptr<ProgramNode> program = std::make_unique<ProgramNode>();
     while (pos < tokens.size() && tokens[pos].type != Tok::EOF_TOK) {
-        std::unique_ptr<FunctionNode> func = parse_function();
-        program->functions.push_back(std::move(func));
+
+        if (pos+2 >= tokens.size() || (tokens[pos].type != Tok::KW_INT && tokens[pos].type != Tok::KW_FLOAT) || tokens[pos+1].type != Tok::IDENT) {
+            std::string err_msg = "only declarations and functions are allowed at top level, but got '" +
+                tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no);
+            if(pos + 1 < tokens.size())
+                err_msg += " and got " + tokens[pos+1].text + " at line " + std::to_string(tokens[pos+1].line_no);
+            throw std::runtime_error(
+                err_msg
+            );
+        }
+
+        if(pos+2 < tokens.size() && tokens[pos+2].type == Tok::LPAREN){
+            std::unique_ptr<FunctionNode> func = parse_function();
+            program->functions.push_back(std::move(func));
+        }
+        else{
+            std::unique_ptr<DeclStmt> decl = parse_declaration_statement();
+            program->glob_vars.push_back(std::move(decl));
+        }
     }
     return program;
 }

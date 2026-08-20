@@ -39,10 +39,21 @@ inline uint32_t get_instruction_size(const RawLine& raw_line){
             // malformed immediate, let Pass2 report the error
         }
     }
+    if(raw_line.mnemonic == "la") return 8;
+    if(raw_line.mnemonic == ".word") return 4;
+    if(raw_line.mnemonic == ".text" || raw_line.mnemonic == ".data") return 0;
     return 4;
 }
 
 #include "assembler_macro.hpp"
+#include "Computer_info.hpp"
+enum class Section {TEXT, DATA};
+
+struct BinHeader{
+    uint32_t magic = 0x434D4D00;
+    uint32_t text_size = 0;
+    uint32_t data_base = 0;
+};
 
 class Assembler {
 private:
@@ -50,8 +61,15 @@ private:
     std::string path;
     std::string output_path;
     std::vector<uint32_t> machine_codes;
+    std::vector<uint8_t> data_bytes;
+    uint32_t next_text_addr_ = TEXT_BASE;
+    uint32_t next_data_addr_ = DATA_BASE;
+    Section curr_section_ = Section::TEXT;
+    uint32_t& curr_addr(); //alert! this means caller may modify this function's return value
     std::vector<std::vector<Token>> tokens;
     std::vector<RawLine> raw_lines;
+    void emit_word(uint32_t word);
+
     std::unordered_map<std::string, uint32_t> label_addresses;
     void read_file_lines();
     void Lexer();

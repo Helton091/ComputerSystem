@@ -1,11 +1,13 @@
 #ifndef COMPUTER_HPP
 #define COMPUTER_HPP
+#include "Computer_info.hpp"
 #include<cstdint>
 #include<cstddef>
 #include<vector>
 #include<functional>
 
 inline constexpr uint32_t MEM_SIZE = 0x400000; // 4MB
+
 
 class Computer{
 private:
@@ -59,12 +61,15 @@ public:
         MEM[addr+2] = static_cast<uint8_t>((data >> 16) & 0xFF);
         MEM[addr+3] = static_cast<uint8_t>((data >> 24) & 0xFF);
     }
-    void LoadProgram(const uint8_t* code, size_t size, uint32_t base_addr){
-        for(size_t i = 0; i < size; ++i){
-            MEM[base_addr + i] = code[i];
+    void LoadSegment(const uint8_t* data, size_t size, uint32_t base_addr){
+        if(base_addr + size > MEM_SIZE){
+            throw std::runtime_error("segment exceeds memory size");
         }
-        PC = base_addr;
+        for(size_t i = 0; i < size; ++i){
+            MEM[base_addr + i] = data[i];
+        }
     }
+    void LoadProgram(const std::string& path);
 
     void execute_step();
     void execute(){

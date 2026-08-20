@@ -1,0 +1,6 @@
+float g;
+
+float main() {
+    g = 1.5;
+    return g;
+}

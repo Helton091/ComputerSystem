@@ -1,5 +1,6 @@
 #include"IR2RISCV.hpp"
 #include<cstring>
+#include<sstream>
 
 namespace IR{
 
@@ -15,6 +16,10 @@ void IR2RISCV::load_int_operand(const Value* v, const std::string& reg){
         emit("li " + reg + ", " + std::to_string(c->i_val));
     else if(auto* a = dynamic_cast<const Argument*>(v))
         emit("addi " + reg + ", " + arg_reg_of_.at(a) + ", 0");
+    else if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
+        emit("la " + reg + ", " + g->name);
+        emit("lw " + reg + ", 0(" + reg + ")");
+    }
     else
         emit("lw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
 }
@@ -25,16 +30,30 @@ void IR2RISCV::load_float_operand(const Value* v, const std::string& reg){
         emit("fmv.w.x " + reg + ", t0");
     } else if(auto* a = dynamic_cast<const Argument*>(v)){
         emit("fmv.s " + reg + ", " + arg_reg_of_.at(a));
-    } else {
+    } else if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
+        emit("la t0, " + g->name);
+        emit("flw " + reg + ", 0(t0)");
+    }
+    else {
         emit("flw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
     }
 }
 
 void IR2RISCV::store_int_result(const Value* v, const std::string& reg){
+    if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
+        emit("la t1, " + g->name);
+        emit("sw " + reg + ", 0(t1)");
+    }
+    else
     emit("sw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
 }
 
 void IR2RISCV::store_float_result(const Value* v, const std::string& reg){
+    if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
+        emit("la t0, " + g->name);
+        emit("fsw " + reg + ", 0(t0)");
+    } 
+    else
     emit("fsw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
 }
 
@@ -45,6 +64,30 @@ void IR2RISCV::generate(const Module* mod, std::ostream& out){
 }
 
 void IR2RISCV::gen_program(const Module* mod){
+
+    if(!mod->get_globals().empty()){
+        emit(".data");
+        for(const auto& glob : mod->get_globals()){
+            emit(glob->name + ":");
+            if(glob->type == IntType::get()){
+                auto* c = dynamic_cast<ConstantInt*>(glob->init_value);
+                int val = 0;
+                if(c) val = c->i_val;
+                else throw std::runtime_error("int global variable should only be initialized with int literall");
+                emit(".word " + std::to_string(val));
+            } else if(glob->type == FloatType::get()){
+                auto* c = dynamic_cast<ConstantFloat*>(glob->init_value);
+                uint32_t bits = 0;
+                if(c) bits = float_to_bits(c->f_val);
+                else throw std::runtime_error("float global variable should only be initialized with float literall");
+                std::stringstream ss;
+                ss << "0x" << std::hex << bits;
+                emit(".word " + ss.str());
+            }
+        }
+    }
+
+    emit(".text");
     emit("_start:");
     emit("call main");
     emit("li a7, 10");

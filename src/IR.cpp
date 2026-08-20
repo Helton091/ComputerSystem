@@ -80,16 +80,29 @@ BasicBlock* Function::add_block(const std::string& name){
     return blocks.back().get();
 }
 
+GlobalVariable* Module::find_global(const std::string& name) const{
+    auto it = global_map_.find(name);
+    if(it != global_map_.end()) return it->second;
+    return nullptr;
+}
+
+GlobalVariable* Module::add_global(const std::string& name, Type* type, Value* init){
+    if(find_global(name)) throw std::runtime_error("duplicated global variable " + name);
+    globals.push_back(std::make_unique<GlobalVariable>(type,name,init));
+    global_map_[name] = globals.back().get();
+    return globals.back().get();
+}
+
 Function* Module::add_function(const std::string& name, Type* typ){
     if(find_function(name)) throw std::runtime_error("duplicated function " + name);
     functions.push_back(std::make_unique<Function>(name,typ));
+    function_map_[name] = functions.back().get();
     return functions.back().get();
 }
 
 Function* Module::find_function(const std::string& name) const{
-    for(auto it = functions.begin(); it != functions.end();++it){
-        if(name == it->get()->name) return it->get();
-    }
+    auto it = function_map_.find(name);
+    if(it != function_map_.end()) return it->second;
     return nullptr;
 }
 
@@ -216,6 +229,17 @@ static void dump_inst(const Instruction& inst, std::ostream& out){
 }
 
 void Module::dump(std::ostream& out) const{
+    for(const auto& glob : globals){
+        out << "@" << glob->name << " = global " << glob->type->to_string();
+        if(glob->init_value){
+            out << " " << operand_str(glob->init_value);
+        } else {
+            out << " 0";
+        }
+        out << "\n";
+    }
+    if(!globals.empty()) out << "\n";
+
     for(const auto& func : functions){
         out << "define " << func->return_type->to_string() << " @" << func->name << "(";
         for(size_t i = 0; i < func->args.size(); ++i){
@@ -313,22 +337,33 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         std::vector<Value*> operands = new_inst->operands;
         if(operands.size() != 1) throw std::runtime_error("for load, there should be exactly 1 operand");
         Value* val = operands[0];
-        const Instruction* ins = nullptr;
-        if(!(ins = dynamic_cast<const Instruction*>(val)) || (ins->op != Opcode::ALLOCA))
-            throw std::runtime_error("the operand of load must be the result of alloca");
-        if(ins->type != type)
-            throw std::runtime_error("type of load and it's operand must be the same");
-        
+
+        bool is_alloca = false;
+        if (auto* ins = dynamic_cast<const Instruction*>(val)) {
+            is_alloca = (ins->op == Opcode::ALLOCA);
+        }
+        bool is_global = (dynamic_cast<const GlobalVariable*>(val) != nullptr);
+
+        if(!is_alloca && !is_global)
+            throw std::runtime_error("the operand of load must be alloca or global variable");
+        if(val->type != type)
+            throw std::runtime_error("type of load and its operand must be the same"); 
     }
     break;
     case Opcode::STORE:{
         std::vector<Value*> operands = new_inst->operands;
         if(operands.size() != 2) throw std::runtime_error("store should have 2 operands");
-        const Instruction* ins = dynamic_cast<const Instruction*>(operands[1]);
-        if(!ins || ins->op != Opcode::ALLOCA) 
-            throw std::runtime_error("the second operand of store must be alloca instruction");
+
+        bool is_dest_alloca = false;
+        if (auto* ins = dynamic_cast<const Instruction*>(operands[1])) {
+            is_dest_alloca = (ins->op == Opcode::ALLOCA);
+        }
+        bool is_dest_global = dynamic_cast<const GlobalVariable*>(operands[1]) != nullptr;
+
+        if(!is_dest_alloca && !is_dest_global)
+            throw std::runtime_error("the destination of store must be alloca or global variable");
         if(new_inst->type != VoidType::get()) throw std::runtime_error("store's type must be void");
-        if(operands[0]->type != ins->type) throw std::runtime_error("store's two operands' type must be the same");
+        if(operands[0]->type != operands[1]->type) throw std::runtime_error("store's two operands' type must be the same");
     }
     break;
     case Opcode::BR:{

@@ -1,4 +1,5 @@
 #include "Computer.hpp"
+#include "Computer_info.hpp"
 #include<cstdio>
 #include<climits>
 #include<vector>
@@ -539,6 +540,39 @@ static std::vector<uint8_t> load_bin(const char* path) {
     );
 }
 
+static uint32_t read_u32(std::ifstream& file){
+    uint8_t bytes[4];
+    file.read(reinterpret_cast<char*>(bytes), 4);
+    return static_cast<uint32_t>(bytes[0]) |
+           (static_cast<uint32_t>(bytes[1]) << 8) |
+           (static_cast<uint32_t>(bytes[2]) << 16) |
+           (static_cast<uint32_t>(bytes[3]) << 24);
+}
+
+void Computer::LoadProgram(const std::string& path){
+    std::ifstream file(path, std::ios::binary);
+    if(!file){
+        throw std::runtime_error("failed to open binary: " + path);
+    }
+
+    // 1. 读 header
+    uint32_t magic = read_u32(file);
+    if(magic != 0x434D4D00){
+        throw std::runtime_error("invalid CMM binary: bad magic");
+    }
+    uint32_t text_size = read_u32(file);
+    uint32_t data_base = read_u32(file);
+    std::vector<uint8_t> text(text_size);
+    file.read(reinterpret_cast<char*>(text.data()), text_size);
+    std::vector<uint8_t> static_data{
+        std::istreambuf_iterator<char>(file),
+        std::istreambuf_iterator<char>()
+    };
+    LoadSegment(text.data(), text.size(), TEXT_BASE);  // 0x1000
+    LoadSegment(static_data.data(), static_data.size(), data_base);  // 0x200000
+    PC = TEXT_BASE;
+}
+
 int main(int argc, char* argv[]){
     if(argc < 2){
         std::fprintf(stderr, "Usage: %s <program.bin> [--trace]\n", argv[0]);
@@ -552,12 +586,7 @@ int main(int argc, char* argv[]){
     }
 
     Computer cpu;
-    std::vector<uint8_t> code = load_bin(bin_path);
-    if(code.empty()){
-        std::cerr << "Failed to load: " << bin_path << "\n";
-        return 1;
-    }
-    cpu.LoadProgram(code.data(), code.size(), 0x1000);
+    cpu.LoadProgram(std::string(bin_path));
 
     if(trace){
         cpu.set_trace([](const Computer& c){

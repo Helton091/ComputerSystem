@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-08-20 全局变量写入测试报 compile error
+
+**现象**：新增 `global/write.cmm` 和 `global/float_write.cmm` 后，
+`run_tests.ps1` 显示 `[FAIL] compile error`，但错误细节被脚本吞掉；
+手动单步编译才看到 `the init value of global variable must be literal number`。
+
+**根因**：[AST2IR.cpp](file:///c:/Users/helton/Desktop/%E5%AD%A6%E4%B9%A0%E6%96%87%E4%BB%B6/compiler/src/AST2IR.cpp#L54-L68)
+在翻译全局变量时，只接受字面量初始化，对未初始化的全局变量
+（如 `int g;`、`float g;`）直接抛异常。但零初始化全局变量是合法语法。
+
+**解法**：当全局变量没有显式初始化时，按类型补默认值：
+`int` 补常量 `0`，`float` 补常量 `0.0f`。
+
+**教训**：
+1. 测试脚本用 `2>&1 | Out-Null` 吞掉 stderr 是这次调试费劲的主要原因；
+   编译失败时应把错误信息打印出来，否则只能盲人摸象。
+2. 错误消息只说了"must be literal number"，没报变量名、文件、行号，
+   定位慢。异常信息应带上下文（标识符、当前函数/阶段）。
+3. 新增语法覆盖时，别忘了给"默认/缺省"分支写测试。
+
+---
+
 ## 2026-08-19 float 测试死循环：li 伪指令长度导致标签地址错位
 
 **现象**：新增 `float/literal` 测试时，simulator 在 `j .Lmain_epilogue`

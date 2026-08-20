@@ -70,6 +70,12 @@ struct Value{
     void replace_all_uses_with(Value* v);
 };
 
+struct GlobalVariable : Value{
+    Value* init_value;
+    GlobalVariable(Type* t, const std::string& n, Value* init = nullptr)
+        : Value(t, n), init_value(init) {}
+};
+
 struct User : Value{
     std::vector<Value*> operands;
     User(Type* t, std::string n = "") : Value(t, std::move(n)) {}
@@ -136,6 +142,9 @@ struct Module {
     ConstantInt* get_const(int v);
     ConstantFloat* get_const(float f);
     const std::vector<std::unique_ptr<Function>>& get_functions() const{return functions;}
+    const std::vector<std::unique_ptr<GlobalVariable>>& get_globals() const{return globals;}
+    GlobalVariable* add_global(const std::string& name, Type* type, Value* init = nullptr);
+    GlobalVariable* find_global(const std::string& name) const;
     void dump(std::ostream& out) const;
 
 private:
@@ -143,7 +152,11 @@ private:
     std::vector<std::unique_ptr<ConstantFloat>> float_const_pool_;
     std::unordered_map<int, ConstantInt*> int_const_map_;
     std::unordered_map<float , ConstantFloat*> float_const_map_;
-    std::vector<std::unique_ptr<Function>> functions;        
+    std::vector<std::unique_ptr<GlobalVariable>> globals;
+    std::vector<std::unique_ptr<Function>> functions;  
+    std::unordered_map<std::string, GlobalVariable*> global_map_;
+    std::unordered_map<std::string, Function*> function_map_;
+    
 };
 
 Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
