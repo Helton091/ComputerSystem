@@ -1,0 +1,8 @@
+void set(int x) {
+    return;
+}
+
+int main() {
+    set(10);
+    return 0;
+}

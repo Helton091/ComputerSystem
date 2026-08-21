@@ -1,0 +1,12 @@
+int count = 0;
+
+void inc() {
+    count = count + 1;
+}
+
+int main() {
+    inc();
+    inc();
+    inc();
+    return count;
+}

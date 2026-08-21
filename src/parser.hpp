@@ -49,6 +49,8 @@ public:
             return std::make_unique<AST::IntType>();
         case Tok::KW_FLOAT:
             return std::make_unique<AST::FloatType>();
+        case Tok::KW_VOID:
+            return std::make_unique<AST::VoidType>();
         default:
             throw std::runtime_error(
                 "[Parser] " + err_msg + " at line " + std::to_string(token.line_no) +

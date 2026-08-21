@@ -204,8 +204,12 @@ static void dump_inst(const Instruction& inst, std::ostream& out){
         out << "jmp label %" << inst.operands[0]->name;
         break;
     case Opcode::RET:
-        out << "ret " << inst.operands[0]->type->to_string() << " "
-            << operand_str(inst.operands[0]);
+        if(inst.operands.empty()){
+            out << "ret void";
+        } else {
+            out << "ret " << inst.operands[0]->type->to_string() << " "
+                << operand_str(inst.operands[0]);
+        }
         break;
     case Opcode::CALL:
         out << "call " << inst.type->to_string() << " "
@@ -339,14 +343,19 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         Value* val = operands[0];
 
         bool is_alloca = false;
-        if (auto* ins = dynamic_cast<const Instruction*>(val)) {
+        auto* ins = dynamic_cast<const Instruction*>(val);
+        if (ins) {
             is_alloca = (ins->op == Opcode::ALLOCA);
         }
-        bool is_global = (dynamic_cast<const GlobalVariable*>(val) != nullptr);
+        auto* glob = dynamic_cast<const GlobalVariable*>(val);
+        bool is_global = (glob != nullptr);
 
         if(!is_alloca && !is_global)
             throw std::runtime_error("[IR] the operand of load must be alloca or global variable");
-        if(val->type != type)
+        Type* operand_type = is_alloca ? ins->type : glob->type;
+        auto pt = dynamic_cast<PointerType*>(operand_type);
+        if(!pt) throw std::runtime_error("[IR] load operand must have pointer type");
+        if(pt->element_type != type)
             throw std::runtime_error("[IR] type of load and its operand must be the same"); 
     }
     break;
@@ -363,7 +372,7 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         if(!is_dest_alloca && !is_dest_global)
             throw std::runtime_error("[IR] the destination of store must be alloca or global variable");
         if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] store's type must be void");
-        if(operands[0]->type != operands[1]->type) throw std::runtime_error("[IR] store's two operands' type must be the same");
+        if(PointerType::get(operands[0]->type) != operands[1]->type) throw std::runtime_error("[IR] store's second operand should be the pointer type of the first one");
     }
     break;
     case Opcode::BR:{
@@ -380,7 +389,7 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
     }
     break;
     case Opcode::RET:{
-        if(new_inst->operands.size() != 1) throw std::runtime_error("[IR] ret needs exactly 1 operand");
+        if(new_inst->operands.size() > 1) throw std::runtime_error("[IR] ret needs at most 1 operand");
         if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] ret's type must be void");
     }
     break;

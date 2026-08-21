@@ -43,6 +43,24 @@ private:
     FloatType() = default;
 };
 
+class PointerType : public Type{
+public:
+    Type* element_type;
+    static PointerType* get(Type* elem){
+        static std::unordered_map<Type*,PointerType*> map;
+        auto it = map.find(elem);
+        if(it != map.end()) return it->second;
+        auto p = new PointerType(elem);
+        //pointertype live as long as the program, so we don't need delete. OS will do it
+        map[elem] = p;
+        return p;
+    }
+    int size() const override{return 4;}
+    std::string to_string() const override{return element_type->to_string() + "*";}
+private:
+    explicit PointerType(Type* elem) : element_type(elem){}
+};
+
 enum class Opcode{
     ALLOCA, LOAD, STORE,
     ADD, SUB, MUL, DIV, REM, NEG,
@@ -136,6 +154,17 @@ struct Function : Value{
 };
 
 struct Module {
+    ~Module(){
+        // Drop all operands before destroying Functions so that CALL
+        // instructions do not touch already-destroyed callee Functions.
+        for(const auto& func : functions){
+            for(const auto& block : func->blocks){
+                for(const auto& inst : block->insts){
+                    inst->drop_operands();
+                }
+            }
+        }
+    }
     
     Function* add_function(const std::string& name, Type* typ);
     Function* find_function(const std::string& name) const;

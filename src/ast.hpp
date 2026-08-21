@@ -26,6 +26,12 @@ public:
     std::string to_string() override {return "float";}
 };
 
+class VoidType : public Type{
+public:
+    int size() const override {return 0;}
+    std::string to_string() override{return "void";}
+};
+
 struct TypedName{
     std::string name;
     std::unique_ptr<Type> type;

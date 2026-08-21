@@ -68,6 +68,10 @@ $tests = @(
     @{ name = "global/expr";       expect = 7 },
     @{ name = "global/float_global"; expect_fa0 = 2.5 },
     @{ name = "global/float_write";  expect_fa0 = 1.5 },
+    # void
+    @{ name = "void/simple";      expect = 0 },
+    @{ name = "void/no_return";   expect = 6 },
+    @{ name = "void/multi_call";  expect = 6 },
     # error cases (expect compile-time failure)
     @{ name = "error/redefined_var";       expect_compile_error = $true },
     @{ name = "error/out_of_scope";        expect_compile_error = $true },
@@ -78,7 +82,21 @@ $tests = @(
     @{ name = "error/type_return_mismatch";     expect_compile_error = $true },
     @{ name = "error/global_init_var_ref";      expect_compile_error = $true },
     @{ name = "error/condition_float";          expect_compile_error = $true },
-    @{ name = "error/mod_float";                expect_compile_error = $true }
+    @{ name = "error/mod_float";                expect_compile_error = $true },
+    @{ name = "error/void_return_value";        expect_compile_error = $true },
+    @{ name = "error/non_void_empty_return";    expect_compile_error = $true },
+    @{ name = "error/void_var";                 expect_compile_error = $true },
+    @{ name = "error/void_param";               expect_compile_error = $true },
+    @{ name = "error/void_as_value";            expect_compile_error = $true },
+    # integration tests (combine multiple language features)
+    @{ name = "integration/fib";            expect = 55 },
+    @{ name = "integration/factorial";      expect = 120 },
+    @{ name = "integration/gcd";            expect = 6 },
+    @{ name = "integration/counter";        expect = 3 },
+    @{ name = "integration/sqrt_float";     expect = 1 },
+    @{ name = "integration/hanoi";          expect = 15 },
+    @{ name = "integration/sum_of_squares"; expect = 385 },
+    @{ name = "integration/power";          expect = 1024 }
 )
 $all_pass = $true
 

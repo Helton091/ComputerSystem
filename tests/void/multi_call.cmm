@@ -1,0 +1,13 @@
+int sum;
+
+void add(int x) {
+    sum = sum + x;
+}
+
+int main() {
+    sum = 0;
+    add(1);
+    add(2);
+    add(3);
+    return sum;
+}

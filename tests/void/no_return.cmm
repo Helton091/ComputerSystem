@@ -1,0 +1,11 @@
+int g;
+
+void inc() {
+    g = g + 1;
+}
+
+int main() {
+    g = 5;
+    inc();
+    return g;
+}

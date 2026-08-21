@@ -13,6 +13,8 @@ private:
     //for global variable, it stores in module_
     Instruction* find_alloc(const std::string& name);
     Value* find_variable(const std::string& name);
+    //the result of find_variable may be instruction*(alloca) or globalvariable*
+    //but result->type always is PointerType
     void enter_scope(){scope_stack_.push_back(std::unordered_map<std::string, Instruction*>{});}
     void exit_scope(){if(!scope_stack_.empty()) scope_stack_.pop_back();}
     int block_counter_ = 0;

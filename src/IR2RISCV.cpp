@@ -68,14 +68,15 @@ void IR2RISCV::gen_program(const Module* mod){
     if(!mod->get_globals().empty()){
         emit(".data");
         for(const auto& glob : mod->get_globals()){
+            Type* elem_type = static_cast<PointerType*>(glob->type)->element_type;
             emit(glob->name + ":");
-            if(glob->type == IntType::get()){
+            if(elem_type == IntType::get()){
                 auto* c = dynamic_cast<ConstantInt*>(glob->init_value);
                 int val = 0;
                 if(c) val = c->i_val;
                 else throw std::runtime_error("[IR2RISCV] int global variable '" + glob->name + "' should only be initialized with an int literal");
                 emit(".word " + std::to_string(val));
-            } else if(glob->type == FloatType::get()){
+            } else if(elem_type == FloatType::get()){
                 auto* c = dynamic_cast<ConstantFloat*>(glob->init_value);
                 uint32_t bits = 0;
                 if(c) bits = float_to_bits(c->f_val);

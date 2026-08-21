@@ -65,7 +65,7 @@ std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
         } else {
             throw std::runtime_error("[AST2IR] global variable '" + glob_var->var.name + "' must be initialized with a literal number");
         }
-        module_->add_global(glob_var->var.name,type,init);
+        module_->add_global(glob_var->var.name,PointerType::get(type),init);
     }
     for(const std::unique_ptr<AST::FunctionNode>& funcnode : program->functions){
         Function* func = module_->add_function(funcnode->name,to_ir_type(funcnode->return_type.get()));
@@ -91,7 +91,7 @@ void AST2IR::gen_function(AST::FunctionNode* funcnode){
     int temp_cnt = 0;
     for(const AST::Param& arg : funcnode->params){
         Argument* new_arg =  curr_func_->args[temp_cnt].get();
-        Instruction* addr = curr_func_->add_alloca(arg.name, to_ir_type(arg.type.get()));
+        Instruction* addr = curr_func_->add_alloca(arg.name, PointerType::get(to_ir_type(arg.type.get())));
         make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{new_arg,addr});
         if(scope_stack_.back().find(arg.name) != scope_stack_.back().end()) throw std::runtime_error("[AST2IR] duplicate name '" + arg.name + "' in function '" + curr_func_->name + "' argument list");
         scope_stack_.back()[arg.name] = addr;
@@ -102,8 +102,12 @@ void AST2IR::gen_function(AST::FunctionNode* funcnode){
     if(!curr_bb_->is_terminated()) {
         if(curr_func_->return_type == IntType::get()){
             make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{module_->get_const(0)});
-        } else {
+        } else if(curr_func_->return_type == FloatType::get()){
             make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{module_->get_const(0.0f)});
+        } else if(curr_func_->return_type == VoidType::get()){
+            make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{});
+        } else {
+            throw std::runtime_error("[AST2IR] unknown return type for function " + curr_func_->name);
         }
     }
     exit_scope();
@@ -117,18 +121,25 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         }
         exit_scope();
     } else if(auto rs = dynamic_cast<AST::ReturnStatement*>(stmt)){
-        Value* ret_val = gen_expr(rs->expr.get());
-        expect_type(curr_func_->return_type, ret_val->type,
-                    "in return statement of function '" + curr_func_->name + "'");
-        make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{ret_val});
+        if(curr_func_->return_type != VoidType::get()){
+            if(!rs->expr) throw std::runtime_error("[AST2IR] function '" + curr_func_->name + "' with non-void return type must return a value");
+            Value* ret_val = gen_expr(rs->expr.get());
+            expect_type(curr_func_->return_type, ret_val->type,
+                        "in return statement of function '" + curr_func_->name + "'");
+            make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{ret_val});
+        } else {
+            if(rs->expr) throw std::runtime_error("[AST2IR] void function '" + curr_func_->name + "' cannot return a value");
+            make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{});
+        }
     } else if(auto ds = dynamic_cast<AST::DeclStmt*>(stmt)){
         std::unordered_map<std::string,Instruction*>& curr_stack =  scope_stack_.back();
         if(curr_stack.find(ds->var.name) != curr_stack.end()) throw std::runtime_error("[AST2IR] redefined variable '" + ds->var.name + "' in function '" + curr_func_->name + "'");
-        Instruction* di = curr_func_->add_alloca(ds->var.name, to_ir_type(ds->var.type.get()));
+        Instruction* di = curr_func_->add_alloca(ds->var.name, PointerType::get(to_ir_type(ds->var.type.get())));
         curr_stack[ds->var.name] = di;
         if(ds->init){
             Value* stored_value = gen_expr(ds->init.get());
-            expect_type(di->type, stored_value->type,
+            Type* elem_type = static_cast<PointerType*>(di->type)->element_type;
+            expect_type(elem_type, stored_value->type,
                         "in initialization of variable '" + ds->var.name + "'");
             make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{stored_value,di});
         } else {
@@ -216,14 +227,19 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         Value* o = gen_expr(un->operand.get());
         return make_inst(curr_bb_,unop_opcode(un->op,o->type),o->type,new_temp_name(),{o});
     } else if(auto is = dynamic_cast<AST::IdentifierNode*>(expr)){
-        Value* alloca = find_variable(is->name);
-        if(!alloca) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
-        return make_inst(curr_bb_, Opcode::LOAD, alloca->type, new_temp_name(), {alloca});
+        Value* addr = find_variable(is->name);
+        if(!addr) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
+        if(auto p = dynamic_cast<PointerType*>(addr->type))
+            return make_inst(curr_bb_, Opcode::LOAD, p->element_type, new_temp_name(), {addr});
+        else
+            throw std::runtime_error("[AST2IR] variable '" + is->name + "' is not an address");
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
         Value* rhs_inst = gen_expr(ae->rhs.get());
         Value* alloca_left = find_variable(ae->lhs->name);
+        
         if(!alloca_left) throw std::runtime_error("[AST2IR] undefined variable '" + ae->lhs->name + "' assigned to in function '" + curr_func_->name + "'");
-        expect_type(alloca_left->type, rhs_inst->type,
+        Type* elem_type = static_cast<PointerType*>(alloca_left->type)->element_type;
+        expect_type(elem_type, rhs_inst->type,
                     "in assignment to variable '" + ae->lhs->name + "'");
         make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{rhs_inst,alloca_left});
         return rhs_inst;
@@ -270,7 +286,8 @@ Value* AST2IR::find_variable(const std::string& name){
 Type* AST2IR::to_ir_type(AST::Type* ast_type){
     if(dynamic_cast<AST::IntType*>(ast_type)) return IntType::get();
     if(dynamic_cast<AST::FloatType*>(ast_type)) return FloatType::get();
-    return VoidType::get();
+    if(dynamic_cast<AST::VoidType*>(ast_type)) return VoidType::get();
+    throw std::runtime_error("[AST2IR] encounter unknown AST type");
 }
 
 

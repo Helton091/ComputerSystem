@@ -4,6 +4,34 @@
 
 ---
 
+## 2026-08-20 综合测试触发 Module 析构崩溃
+
+**现象**：新增 `integration/counter.cmm`（全局变量 + 多函数调用）后，
+`compiler.exe` 崩溃：`[IR] when remove user t1 in , didn't find t1`。
+奇怪的是只调用两次 `inc()` 时不崩溃，三次才崩溃。
+
+**根因**：[IR.hpp](file:///c:/Users/helton/Desktop/%E5%AD%A6%E4%B9%A0%E6%96%87%E4%BB%B6/compiler/src/IR.hpp#L138-L149)
+中 `Module` 的析构顺序是：先按 `functions` vector 顺序析构 `Function`，
+再析构 `GlobalVariable`。`CALL` 指令把被调函数 `Function*` 作为第一个操作数，
+因此 `main()` 中的 `call @inc` 引用着 `inc()` 对应的 `Function`。
+当 `inc()` 先于 `main()` 析构时，`main()` 的 `CALL` 变成了悬空指针；
+后续 `main()` 析构，其 `CALL` 尝试从已释放的 `Function` 中移除 use，
+导致 use 链损坏，最终在另一个临时指令上爆出 `didn't find`。
+
+**解法**：给 `Module` 添加显式析构函数，在 `Function` 对象被释放之前，
+先遍历所有基本块并调用 `Instruction::drop_operands()`，
+切断跨函数引用（尤其是 `CALL` → `Function`），避免访问已释放对象。
+
+**教训**：
+1. 拥有图/引用关系的对象（`Module` → `Function` → `Instruction`）
+   析构顺序必须显式控制，不能依赖 `unique_ptr` 默认顺序。
+2. 单元测试往往只覆盖单个函数或简单场景，综合测试更容易暴露
+   对象生命周期和跨组件引用问题。
+3. “偶发”崩溃（调用两次不崩、三次崩）通常是 use-after-free 或内存损坏，
+   值得优先怀疑对象所有权和析构顺序。
+
+---
+
 ## 2026-08-20 全局变量写入测试报 compile error
 
 **现象**：新增 `global/write.cmm` 和 `global/float_write.cmm` 后，

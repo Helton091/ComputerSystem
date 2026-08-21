@@ -1,0 +1,20 @@
+float sqrt(float x) {
+    float guess = x;
+    int i = 0;
+    while (i < 10) {
+        guess = (guess + x / guess) / 2.0;
+        i = i + 1;
+    }
+    return guess;
+}
+
+int main() {
+    float r = sqrt(2.0);
+    int ok = 0;
+    if (r > 1.41) {
+        if (r < 1.42) {
+            ok = 1;
+        }
+    }
+    return ok;
+}

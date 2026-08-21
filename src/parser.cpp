@@ -85,6 +85,7 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
 
 std::unique_ptr<DeclStmt> Parser::parse_declaration_statement() {
     std::unique_ptr<Type> ty = parse_type_tok();
+    if(dynamic_cast<VoidType*>(ty.get())) throw std::runtime_error("[parser] declaration of variable should not be void type" );
     const Token& token = expect(Tok::IDENT, "expect variable name");
     std::string name = token.text;
 
@@ -146,7 +147,8 @@ std::unique_ptr<StatementNode> Parser::parse_statement() {
 }
 
 std::unique_ptr<ReturnStatement> Parser::parse_return_statement() {
-    std::unique_ptr<ExprNode> expr = parse_expression();
+    std::unique_ptr<ExprNode> expr = nullptr;
+    if(tokens.at(pos).type != Tok::SEMICOLON) expr = parse_expression();
     expect(Tok::SEMICOLON, "Expected ';' after return statement");
     return std::make_unique<ReturnStatement>(std::move(expr));
 }
@@ -174,6 +176,7 @@ std::vector<Param> Parser::parse_parameters() {
     }
     do {
         std::unique_ptr<Type> parsed_type = parse_type_tok();
+        if(dynamic_cast<VoidType*>(parsed_type.get())) throw std::runtime_error("parameters' type should not be void type");
         const Token& name_token = expect(Tok::IDENT, "Expected parameter name");
         if (seen.count(name_token.text)) {
             throw std::runtime_error(
@@ -209,7 +212,7 @@ std::unique_ptr<ProgramNode> Parser::parse_program() {
     std::unique_ptr<ProgramNode> program = std::make_unique<ProgramNode>();
     while (pos < tokens.size() && tokens[pos].type != Tok::EOF_TOK) {
 
-        if (pos+2 >= tokens.size() || (tokens[pos].type != Tok::KW_INT && tokens[pos].type != Tok::KW_FLOAT) || tokens[pos+1].type != Tok::IDENT) {
+        if (pos+2 >= tokens.size() || tokens[pos+1].type != Tok::IDENT) {
             std::string err_msg = "[Parser] only declarations and functions are allowed at top level, but got '" +
                 tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no) +
                 ", col " + std::to_string(tokens[pos].col_no);
