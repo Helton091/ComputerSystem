@@ -12,6 +12,13 @@ public:
     const std::vector<Token>& tokens;
     size_t pos = 0;
 
+    static constexpr int BP_PREFIX   = 21;  // unary
+    static constexpr int BP_MUL      = 20;  // * / %
+    static constexpr int BP_ADD      = 10;  // + -
+    static constexpr int BP_CMP      = 5;   // < <= > >=
+    static constexpr int BP_EQ       = 4;   // == !=
+    static constexpr int BP_ASSIGN   = 1;   // =
+
     const Token& peek() {
         if (pos < tokens.size()) return tokens[pos];
         throw std::runtime_error("[Parser] unexpected end of file");
@@ -42,23 +49,7 @@ public:
         return false;
     }
 
-    std::unique_ptr<AST::Type> parse_type_tok(const std::string& err_msg = "expected data type (like int, float)"){
-        const Token& token = advance();
-        switch(token.type){
-        case Tok::KW_INT:
-            return std::make_unique<AST::IntType>();
-        case Tok::KW_FLOAT:
-            return std::make_unique<AST::FloatType>();
-        case Tok::KW_VOID:
-            return std::make_unique<AST::VoidType>();
-        default:
-            throw std::runtime_error(
-                "[Parser] " + err_msg + " at line " + std::to_string(token.line_no) +
-                ", col " + std::to_string(token.col_no)
-            );
-        } 
-
-    }
+    std::unique_ptr<AST::Type> parse_type_tok(const std::string& err_msg = "expected data type (like int, float)");
 
     std::unique_ptr<AST::ProgramNode> parse_program();
     std::unique_ptr<AST::FunctionNode> parse_function();

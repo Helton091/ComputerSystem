@@ -32,6 +32,14 @@ public:
     std::string to_string() override{return "void";}
 };
 
+class PointerType : public Type{
+public:
+    int size() const override {return 4;}
+    std::unique_ptr<Type> pointee;
+    explicit PointerType(std::unique_ptr<Type> p) : pointee(std::move(p)){}
+    std::string to_string() override{return pointee->to_string() + "*";}
+};
+
 struct TypedName{
     std::string name;
     std::unique_ptr<Type> type;
@@ -50,6 +58,13 @@ public:
 using ASTNodePtr = std::unique_ptr<ASTNode>;
 
 class ExprNode : public ASTNode {};
+
+class NullPointerNode : public ExprNode {
+public:
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "NullPointerNode\n";
+    }
+};
 
 class CallExpr : public ExprNode {
 public:
@@ -94,10 +109,10 @@ public:
 
 class AssignmentExpr : public ExprNode {
 public:
-    std::unique_ptr<IdentifierNode> lhs;
+    std::unique_ptr<ExprNode> lhs;
     std::unique_ptr<ExprNode> rhs;
 
-    AssignmentExpr(std::unique_ptr<IdentifierNode> l, std::unique_ptr<ExprNode> r)
+    AssignmentExpr(std::unique_ptr<ExprNode> l, std::unique_ptr<ExprNode> r)
         : lhs(std::move(l)), rhs(std::move(r)) {}
 
     void dump(int indent = 0) const override {

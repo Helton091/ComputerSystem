@@ -72,6 +72,15 @@ $tests = @(
     @{ name = "void/simple";      expect = 0 },
     @{ name = "void/no_return";   expect = 6 },
     @{ name = "void/multi_call";  expect = 6 },
+    # pointer
+    @{ name = "pointer/basic";      expect = 42 },
+    @{ name = "pointer/assign";     expect = 3 },
+    @{ name = "pointer/multi_ptr";  expect = 55 },
+    @{ name = "pointer/func_ptr";   expect = 77 },
+    @{ name = "pointer/global_ptr"; expect = 123 },
+    @{ name = "pointer/float_ptr";  expect = 1 },
+    @{ name = "pointer/null_ptr";   expect = 0 },
+    @{ name = "pointer/void_ptr";   expect = 0 },
     # error cases (expect compile-time failure)
     @{ name = "error/redefined_var";       expect_compile_error = $true },
     @{ name = "error/out_of_scope";        expect_compile_error = $true },
@@ -88,6 +97,9 @@ $tests = @(
     @{ name = "error/void_var";                 expect_compile_error = $true },
     @{ name = "error/void_param";               expect_compile_error = $true },
     @{ name = "error/void_as_value";            expect_compile_error = $true },
+    @{ name = "error/ptr_type_mismatch";        expect_compile_error = $true },
+    @{ name = "error/ptr_non_zero_init";        expect_compile_error = $true },
+    @{ name = "error/deref_int";                expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },

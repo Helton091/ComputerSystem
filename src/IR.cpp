@@ -124,6 +124,15 @@ ConstantFloat* Module::get_const(float f){
     return float_const_map_[f];
 }
 
+NULLPointer* Module::get_nullptr(Type* pointee_type){
+    auto it = NULLPointer_map_.find(pointee_type);
+    if(it == NULLPointer_map_.end()){
+        NULLPointer_pool_.push_back(std::make_unique<NULLPointer>(pointee_type));
+        NULLPointer_map_[pointee_type] = NULLPointer_pool_.back().get();
+    }
+    return NULLPointer_map_[pointee_type];
+}
+
 // ============================================================
 // 打印（文本格式即测试比对基准，见报告第 6 章）
 // ============================================================
@@ -337,42 +346,27 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
         if(type != FloatType::get()) throw std::runtime_error("[IR] float negation result must be float");
     }
     break;
-    case Opcode::LOAD:{
-        std::vector<Value*> operands = new_inst->operands;
-        if(operands.size() != 1) throw std::runtime_error("[IR] for load, there should be exactly 1 operand");
-        Value* val = operands[0];
-
-        bool is_alloca = false;
-        auto* ins = dynamic_cast<const Instruction*>(val);
-        if (ins) {
-            is_alloca = (ins->op == Opcode::ALLOCA);
-        }
-        auto* glob = dynamic_cast<const GlobalVariable*>(val);
-        bool is_global = (glob != nullptr);
-
-        if(!is_alloca && !is_global)
-            throw std::runtime_error("[IR] the operand of load must be alloca or global variable");
-        Type* operand_type = is_alloca ? ins->type : glob->type;
+    case Opcode::LOAD: {
+        if(operands.size() != 1)
+            throw std::runtime_error("[IR] load instruction requires exactly one operand");
+        
+        auto operand_type = operands[0]->type;
         auto pt = dynamic_cast<PointerType*>(operand_type);
-        if(!pt) throw std::runtime_error("[IR] load operand must have pointer type");
+        if(!pt)
+            throw std::runtime_error("[IR] the operand of load must have pointer type");
+        
         if(pt->element_type != type)
-            throw std::runtime_error("[IR] type of load and its operand must be the same"); 
+            throw std::runtime_error("[IR] load result type does not match operand's element type");
     }
     break;
     case Opcode::STORE:{
         std::vector<Value*> operands = new_inst->operands;
         if(operands.size() != 2) throw std::runtime_error("[IR] store should have 2 operands");
-
-        bool is_dest_alloca = false;
-        if (auto* ins = dynamic_cast<const Instruction*>(operands[1])) {
-            is_dest_alloca = (ins->op == Opcode::ALLOCA);
-        }
-        bool is_dest_global = dynamic_cast<const GlobalVariable*>(operands[1]) != nullptr;
-
-        if(!is_dest_alloca && !is_dest_global)
-            throw std::runtime_error("[IR] the destination of store must be alloca or global variable");
+        auto type1 = dynamic_cast<PointerType*>(operands[1]->type);
+        if(!type1)
+            throw std::runtime_error("[IR] the destination of store must be pointertype");
         if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] store's type must be void");
-        if(PointerType::get(operands[0]->type) != operands[1]->type) throw std::runtime_error("[IR] store's second operand should be the pointer type of the first one");
+        if(type1 != PointerType::get(operands[0]->type) && (!dynamic_cast<NULLPointer*>(operands[0]))) throw std::runtime_error("[IR] store's second operand should be the pointer type of the first one");
     }
     break;
     case Opcode::BR:{

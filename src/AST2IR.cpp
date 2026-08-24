@@ -11,14 +11,14 @@ static bool is_comparison_opcode(Opcode op){
            op == Opcode::FGE || op == Opcode::FEQ || op == Opcode::FNE;
 }
 
-static void expect_type(Type* expected, Type* actual, const std::string& context){
-    if(expected != actual){
-        throw std::runtime_error(
-            "[AST2IR] type mismatch " + context +
-            ": expected '" + expected->to_string() +
-            "', found '" + actual->to_string() + "'"
-        );
-    }
+static void expect_type(Type* expected, Value* actual, const std::string& context){
+    if(expected == actual->type) return;
+    throw std::runtime_error(
+        "[AST2IR] type mismatch " + context +
+        ": expected '" + expected->to_string() +
+        "', found '" + actual->type->to_string() + "'"
+    );
+    
 }
 
 static Opcode binop_opcode(Tok op, Type* operand_type){
@@ -54,16 +54,38 @@ std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
     for(const std::unique_ptr<AST::DeclStmt>& glob_var : program->glob_vars){
         Value* init = nullptr;
         Type* type = to_ir_type(glob_var->var.type.get());
-        if(auto c = dynamic_cast<AST::IntNumberNode*>(glob_var->init.get())){
-            init = module_->get_const(c->value);
-        } else if(auto c = dynamic_cast<AST::FloatNumberNode*>(glob_var->init.get())){
-            init = module_->get_const(c->value);
-        } else if(!glob_var->init){
-            if(type == IntType::get()) init = module_->get_const(0);
-            else if(type == FloatType::get()) init = module_->get_const(0.0f);
-            else throw std::runtime_error("[AST2IR] unsupported type '" + type->to_string() + "' for default initialization of global variable '" + glob_var->var.name + "'");
-        } else {
-            throw std::runtime_error("[AST2IR] global variable '" + glob_var->var.name + "' must be initialized with a literal number");
+        const std::string& name = glob_var->var.name;
+
+        if(type == IntType::get()){
+            if(auto c = dynamic_cast<AST::IntNumberNode*>(glob_var->init.get())){
+                init = module_->get_const(c->value);
+            } else if(!glob_var->init){
+                init = module_->get_const(0);
+            } else {
+                throw std::runtime_error("[AST2IR] global int variable '" + name + "' must be initialized with an integer literal");
+            }
+        }
+        else if(type == FloatType::get()){
+            if(auto c = dynamic_cast<AST::FloatNumberNode*>(glob_var->init.get())){
+                init = module_->get_const(c->value);
+            } else if(!glob_var->init){
+                init = module_->get_const(0.0f);
+            } else {
+                throw std::runtime_error("[AST2IR] global float variable '" + name + "' must be initialized with a float literal");
+            }
+        }
+        else if(auto pt = dynamic_cast<PointerType*>(type)){
+            if(!glob_var->init || dynamic_cast<AST::NullPointerNode*>(glob_var->init.get())){
+                init = module_->get_nullptr(pt->element_type);
+            } else {
+                throw std::runtime_error("[AST2IR] global pointer variable '" + name + "' can only be initialized with nullptr");
+            }
+        }
+        else if(type == VoidType::get()){
+            throw std::runtime_error("[AST2IR] global variable '" + name + "' cannot have void type");
+        }
+        else {
+            throw std::runtime_error("[AST2IR] unsupported global variable type '" + type->to_string() + "' for variable '" + name + "'");
         }
         module_->add_global(glob_var->var.name,PointerType::get(type),init);
     }
@@ -106,7 +128,9 @@ void AST2IR::gen_function(AST::FunctionNode* funcnode){
             make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{module_->get_const(0.0f)});
         } else if(curr_func_->return_type == VoidType::get()){
             make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{});
-        } else {
+        } else if(auto pt = dynamic_cast<PointerType*>(curr_func_->return_type))
+            make_inst(curr_bb_,Opcode::RET,VoidType::get(),"",{module_->get_nullptr(pt->element_type)});
+        else {
             throw std::runtime_error("[AST2IR] unknown return type for function " + curr_func_->name);
         }
     }
@@ -123,8 +147,15 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
     } else if(auto rs = dynamic_cast<AST::ReturnStatement*>(stmt)){
         if(curr_func_->return_type != VoidType::get()){
             if(!rs->expr) throw std::runtime_error("[AST2IR] function '" + curr_func_->name + "' with non-void return type must return a value");
-            Value* ret_val = gen_expr(rs->expr.get());
-            expect_type(curr_func_->return_type, ret_val->type,
+            Value* ret_val;
+            if(dynamic_cast<AST::NullPointerNode*>(rs->expr.get())){
+                auto pt = dynamic_cast<PointerType*>(curr_func_->return_type);
+                if(!pt) throw std::runtime_error("[AST2IR] nullptr returned from non-pointer function '" + curr_func_->name + "'");
+                ret_val = module_->get_nullptr(pt->element_type);
+            } else {
+                ret_val = gen_expr(rs->expr.get());
+            }
+            expect_type(curr_func_->return_type, ret_val,
                         "in return statement of function '" + curr_func_->name + "'");
             make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{ret_val});
         } else {
@@ -137,9 +168,16 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         Instruction* di = curr_func_->add_alloca(ds->var.name, PointerType::get(to_ir_type(ds->var.type.get())));
         curr_stack[ds->var.name] = di;
         if(ds->init){
-            Value* stored_value = gen_expr(ds->init.get());
             Type* elem_type = static_cast<PointerType*>(di->type)->element_type;
-            expect_type(elem_type, stored_value->type,
+            Value* stored_value;
+            if(dynamic_cast<AST::NullPointerNode*>(ds->init.get())){
+                auto pt = dynamic_cast<PointerType*>(elem_type);
+                if(!pt) throw std::runtime_error("[AST2IR] nullptr used to initialize non-pointer variable '" + ds->var.name + "'");
+                stored_value = module_->get_nullptr(pt->element_type);
+            } else {
+                stored_value = gen_expr(ds->init.get());
+            }
+            expect_type(elem_type, stored_value,
                         "in initialization of variable '" + ds->var.name + "'");
             make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{stored_value,di});
         } else {
@@ -148,7 +186,10 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
                 v = module_->get_const(0);
             } else if(dynamic_cast<AST::FloatType*>(ds->var.type.get())){
                 v = module_->get_const(0.0f);
-            } else {
+            } else if(auto pt = dynamic_cast<AST::PointerType*>(ds->var.type.get())){
+                v = module_->get_nullptr(to_ir_type(pt->pointee.get()));
+            }
+            else {
                 throw std::runtime_error("[AST2IR] unsupported type '" + ds->var.type->to_string() + "' for default initialization of variable '" + ds->var.name + "' in function '" + curr_func_->name + "'");
             }
             make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{v,di});
@@ -157,7 +198,7 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         gen_expr(es->expr.get());
     } else if(auto is = dynamic_cast<AST::IfStmt*>(stmt)){
         Value* cond_v = gen_expr(is->cond.get());
-        expect_type(IntType::get(), cond_v->type,
+        expect_type(IntType::get(), cond_v,
                     "in condition of 'if' statement");
         std::string bb1_name = new_block_name("_if_then_");
         BasicBlock* bb1 = curr_func_->add_block(bb1_name);
@@ -198,7 +239,7 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
 
         curr_bb_ = cond_bb;
         Value* cond_v = gen_expr(ws->cond.get());
-        expect_type(IntType::get(), cond_v->type,
+        expect_type(IntType::get(), cond_v,
                     "in condition of 'while' statement");
         make_inst(curr_bb_,Opcode::BR,VoidType::get(),"",{cond_v,body_bb,end_bb});
 
@@ -224,8 +265,35 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         Type* result_type = is_comparison_opcode(op) ? IntType::get() : o1->type;
         return make_inst(curr_bb_,op,result_type,new_temp_name(),{o1,o2});
     } else if(auto un = dynamic_cast<AST::UnaryExpr*>(expr)){
-        Value* o = gen_expr(un->operand.get());
-        return make_inst(curr_bb_,unop_opcode(un->op,o->type),o->type,new_temp_name(),{o});
+        switch(un->op){
+        case Tok::AMPERSAND: {
+            if(auto ident = dynamic_cast<AST::IdentifierNode*>(un->operand.get())){
+                Value* addr = find_variable(ident->name);
+                if(!addr) throw std::runtime_error(
+                    "[AST2IR] undefined variable '" + ident->name + 
+                    "' in function '" + curr_func_->name + "'"
+                );
+                return addr;
+            }
+            throw std::runtime_error("[AST2IR] currently only support &x");
+        }
+        case Tok::STAR: {
+            Value* ptr_val = gen_expr(un->operand.get());
+            auto pt = dynamic_cast<PointerType*>(ptr_val->type);
+            if(!pt) throw std::runtime_error(
+                "[AST2IR] cannot dereference non-pointer type '" + 
+                ptr_val->type->to_string() + "' in function '" + curr_func_->name + "'"
+            );
+            return make_inst(curr_bb_, Opcode::LOAD, pt->element_type, new_temp_name(), {ptr_val});
+        }
+        case Tok::SUB: {
+            Value* o = gen_expr(un->operand.get());
+            return make_inst(curr_bb_, unop_opcode(un->op, o->type), o->type, new_temp_name(), {o});
+        }
+        default:
+            throw std::runtime_error("[AST2IR] unknown unary opcode in function '" + curr_func_->name + "'");
+        }
+
     } else if(auto is = dynamic_cast<AST::IdentifierNode*>(expr)){
         Value* addr = find_variable(is->name);
         if(!addr) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
@@ -234,15 +302,51 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         else
             throw std::runtime_error("[AST2IR] variable '" + is->name + "' is not an address");
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
-        Value* rhs_inst = gen_expr(ae->rhs.get());
-        Value* alloca_left = find_variable(ae->lhs->name);
-        
-        if(!alloca_left) throw std::runtime_error("[AST2IR] undefined variable '" + ae->lhs->name + "' assigned to in function '" + curr_func_->name + "'");
-        Type* elem_type = static_cast<PointerType*>(alloca_left->type)->element_type;
-        expect_type(elem_type, rhs_inst->type,
-                    "in assignment to variable '" + ae->lhs->name + "'");
-        make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{rhs_inst,alloca_left});
+        Value* dest_addr = nullptr;
+        Type* elem_type = nullptr;
+        std::string lhs_name;
+
+        if(auto ident = dynamic_cast<AST::IdentifierNode*>(ae->lhs.get())){
+            lhs_name = ident->name;
+            Value* alloca_left = find_variable(lhs_name);
+            if(!alloca_left) throw std::runtime_error(
+                "[AST2IR] undefined variable '" + lhs_name +
+                "' assigned to in function '" + curr_func_->name + "'"
+            );
+            elem_type = static_cast<PointerType*>(alloca_left->type)->element_type;
+            dest_addr = alloca_left;
+        }
+        else if(auto un = dynamic_cast<AST::UnaryExpr*>(ae->lhs.get())){
+            if(un->op != Tok::STAR)
+                throw std::runtime_error("[AST2IR] left side of assignment must be a variable or dereference");
+            Value* ptr_val = gen_expr(un->operand.get());
+            auto pt = dynamic_cast<PointerType*>(ptr_val->type);
+            if(!pt) throw std::runtime_error(
+                "[AST2IR] cannot dereference non-pointer type in assignment"
+            );
+            elem_type = pt->element_type;
+            dest_addr = ptr_val;
+            lhs_name = "*<deref>";
+        }
+        else {
+            throw std::runtime_error("[AST2IR] left side of assignment must be a variable or dereference");
+        }
+
+        Value* rhs_inst;
+        if(dynamic_cast<AST::NullPointerNode*>(ae->rhs.get())){
+            auto elem_pt = dynamic_cast<PointerType*>(elem_type);
+            if(!elem_pt)
+                throw std::runtime_error("[AST2IR] nullptr cannot be assigned to non-pointer location '" + lhs_name + "'");
+            rhs_inst = module_->get_nullptr(elem_pt->element_type);
+        } else {
+            rhs_inst = gen_expr(ae->rhs.get());
+        }
+
+        expect_type(elem_type, rhs_inst,
+                    "in assignment to '" + lhs_name + "'");
+        make_inst(curr_bb_, Opcode::STORE, VoidType::get(), "", {rhs_inst, dest_addr});
         return rhs_inst;
+
     } else if(auto ce = dynamic_cast<AST::CallExpr*>(expr)){
         Function* func = module_->find_function(ce->name);
         if(!func) throw std::runtime_error("[AST2IR] undefined function '" + ce->name + "' called in function '" + curr_func_->name + "'");
@@ -250,15 +354,27 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         std::vector<Value*> args;
         args.push_back(func);
         for(size_t i = 0; i < ce->args.size(); ++i){
-            Value* arg_val = gen_expr(ce->args[i].get());
             Type* param_type = func->args[i]->type;
-            expect_type(param_type, arg_val->type,
+            AST::ExprNode* en = ce->args[i].get();
+            if(dynamic_cast<AST::NullPointerNode*>(en)){
+                auto pt = dynamic_cast<PointerType*>(param_type);
+                if(!pt) throw std::runtime_error("[AST2IR] nullptr passed to non-pointer parameter " + std::to_string(i + 1) + " of function '" + ce->name + "'");
+                NULLPointer* null = module_->get_nullptr(pt->element_type);
+                args.push_back(null);
+                continue;
+            }
+            
+            
+            Value* arg_val = gen_expr(en);
+            expect_type(param_type, arg_val,
                         "in argument " + std::to_string(i + 1) +
                         " of call to function '" + ce->name + "'");
             args.push_back(arg_val);
         }
         return make_inst(curr_bb_,Opcode::CALL,func->return_type,new_temp_name(),args);
 
+    } else if(dynamic_cast<AST::NullPointerNode*>(expr)){
+        throw std::runtime_error("[AST2IR] nullptr must be used in a pointer context");
     }
     else{
         throw std::runtime_error("[AST2IR] unknown AST expression node type in function '" + curr_func_->name + "'");
@@ -287,6 +403,7 @@ Type* AST2IR::to_ir_type(AST::Type* ast_type){
     if(dynamic_cast<AST::IntType*>(ast_type)) return IntType::get();
     if(dynamic_cast<AST::FloatType*>(ast_type)) return FloatType::get();
     if(dynamic_cast<AST::VoidType*>(ast_type)) return VoidType::get();
+    if(auto p = dynamic_cast<AST::PointerType*>(ast_type)) return PointerType::get(to_ir_type(p->pointee.get()));
     throw std::runtime_error("[AST2IR] encounter unknown AST type");
 }
 

@@ -5,11 +5,12 @@
 enum class Tok {
     IDENT, INT_NUMBER, FLOAT_NUMBER,EOF_TOK,
 
-    KW_INT, KW_RETURN, KW_FLOAT, KW_VOID, 
+    KW_INT, KW_RETURN, KW_FLOAT, KW_VOID, KW_NULLPTR,
 
     LPAREN, RPAREN, LCURLY, RCURLY, SEMICOLON, COMMA,
 
-    ADD, SUB, STAR, SLASH, PERCENT,
+    ADD, SUB, STAR, SLASH, PERCENT, AMPERSAND /* & */,
+    AND_AND,  
     ASSIGN,
     EQ, NE, LT, GT, LE, GE,
     KW_IF, KW_ELSE, KW_WHILE,
@@ -23,6 +24,7 @@ inline std::unordered_map<std::string, Tok> keywords = {
     {"while", Tok::KW_WHILE},
     {"float", Tok::KW_FLOAT},
     {"void", Tok::KW_VOID},
+    {"nullptr", Tok::KW_NULLPTR},
 };
 
 struct Token {

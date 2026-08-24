@@ -108,6 +108,10 @@ struct ConstantInt : Value {
     explicit ConstantInt(int v) : Value(IntType::get()), i_val(v) {}
 };
 
+struct NULLPointer : Value{
+    explicit NULLPointer(Type* pointee_type) : Value(PointerType::get(pointee_type)){}
+};
+
 struct ConstantFloat : Value{
     float f_val;
     explicit ConstantFloat(float f) : Value(FloatType::get()), f_val(f) {}
@@ -170,6 +174,7 @@ struct Module {
     Function* find_function(const std::string& name) const;
     ConstantInt* get_const(int v);
     ConstantFloat* get_const(float f);
+    NULLPointer* get_nullptr(Type* pointee_type);
     const std::vector<std::unique_ptr<Function>>& get_functions() const{return functions;}
     const std::vector<std::unique_ptr<GlobalVariable>>& get_globals() const{return globals;}
     GlobalVariable* add_global(const std::string& name, Type* type, Value* init = nullptr);
@@ -177,10 +182,12 @@ struct Module {
     void dump(std::ostream& out) const;
 
 private:
+    std::vector<std::unique_ptr<NULLPointer>> NULLPointer_pool_;
     std::vector<std::unique_ptr<ConstantInt>> int_const_pool_; 
     std::vector<std::unique_ptr<ConstantFloat>> float_const_pool_;
     std::unordered_map<int, ConstantInt*> int_const_map_;
     std::unordered_map<float , ConstantFloat*> float_const_map_;
+    std::unordered_map<Type*, NULLPointer*> NULLPointer_map_;
     std::vector<std::unique_ptr<GlobalVariable>> globals;
     std::vector<std::unique_ptr<Function>> functions;  
     std::unordered_map<std::string, GlobalVariable*> global_map_;

@@ -1,0 +1,16 @@
+void set(int *p) {
+    *p = 99;
+}
+
+int* get_ptr(int *p) {
+    return p;
+}
+
+int main() {
+    int a;
+    int *p;
+    set(&a);
+    p = get_ptr(&a);
+    *p = 77;
+    return a;
+}

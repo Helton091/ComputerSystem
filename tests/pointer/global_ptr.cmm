@@ -1,0 +1,12 @@
+int g;
+int *gp;
+
+void init() {
+    gp = &g;
+    *gp = 123;
+}
+
+int main() {
+    init();
+    return g;
+}

@@ -23,6 +23,7 @@ private:
     }
     std::unordered_map<const Argument*,std::string> arg_reg_of_;
     void load_int_operand(const Value* v, const std::string& reg);
+    void load_pointer_operand(const Value* v, const std::string& reg);
     void load_float_operand(const Value* v, const std::string& reg);
     void store_int_result(const Value* v, const std::string& reg);
     void store_float_result(const Value* v, const std::string& reg);

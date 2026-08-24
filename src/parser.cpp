@@ -2,24 +2,47 @@
 
 using namespace AST;
 
+std::unique_ptr<AST::Type> Parser::parse_type_tok(const std::string& err_msg){
+    const Token& token = advance();
+    std::unique_ptr<AST::Type> base = nullptr;
+    switch(token.type){
+    case Tok::KW_INT:
+        base = std::make_unique<AST::IntType>();
+        break;
+    case Tok::KW_FLOAT:
+        base = std::make_unique<AST::FloatType>();
+        break;
+    case Tok::KW_VOID:
+        base = std::make_unique<AST::VoidType>();
+        break;
+    default:
+        throw std::runtime_error(
+            "[Parser] " + err_msg + " at line " + std::to_string(token.line_no) +
+            ", col " + std::to_string(token.col_no)
+        );
+    } 
+    while(match(Tok::STAR)) base = std::make_unique<PointerType>(std::move(base));
+    return base;
+}
+
 int Parser::left_binding_power(Tok type) {
     switch (type) {
-        case Tok::ASSIGN: return 1;
-        case Tok::EQ: case Tok::NE: return 4;
-        case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return 5;
-        case Tok::ADD: case Tok::SUB: return 10;
-        case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return 20;
+        case Tok::ASSIGN: return BP_ASSIGN;
+        case Tok::EQ: case Tok::NE: return BP_EQ;
+        case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP;
+        case Tok::ADD: case Tok::SUB: return BP_ADD;
+        case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return BP_MUL;
         default: return -1;
     }
 }
 
 int Parser::right_binding_power(Tok type) {
     switch (type) {
-        case Tok::ASSIGN: return 1;
-        case Tok::EQ: case Tok::NE: return 5;
-        case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return 6;
-        case Tok::ADD: case Tok::SUB: return 11;
-        case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return 21;
+        case Tok::ASSIGN: return BP_ASSIGN;     
+        case Tok::EQ: case Tok::NE: return BP_EQ + 1;
+        case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP + 1;
+        case Tok::ADD: case Tok::SUB: return BP_ADD + 1;
+        case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return BP_MUL + 1;
         default: return -1;
     }
 }
@@ -35,14 +58,16 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
     case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT:
         return std::make_unique<BinaryExpr>(token.type, std::move(left), std::move(right));
     case Tok::ASSIGN: {
-        auto ident = dynamic_cast<IdentifierNode*>(left.get());
-        if (!ident) {
-            throw std::runtime_error("[Parser] left side of assignment must be a variable at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
+        bool is_lvalue = dynamic_cast<IdentifierNode*>(left.get()) != nullptr ||
+                        (dynamic_cast<UnaryExpr*>(left.get()) != nullptr &&
+                        dynamic_cast<UnaryExpr*>(left.get())->op == Tok::STAR);
+        if (!is_lvalue) {
+            throw std::runtime_error(
+                "[Parser] left side of assignment must be a variable or dereference at line " +
+                std::to_string(token.line_no) + ", col " + std::to_string(token.col_no)
+            );
         }
-        auto ident_ptr = std::unique_ptr<IdentifierNode>(
-            static_cast<IdentifierNode*>(left.release())
-        );
-        return std::make_unique<AssignmentExpr>(std::move(ident_ptr), std::move(right));
+        return std::make_unique<AssignmentExpr>(std::move(left), std::move(right));
     }
     default:
         throw std::runtime_error("[Parser] unknown led token '" + token.text + "' at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
@@ -61,9 +86,13 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
         return result;
     }
     case Tok::SUB: {
-        std::unique_ptr<ExprNode> oper = parse_expression(21);
+        std::unique_ptr<ExprNode> oper = parse_expression(BP_PREFIX);
         return std::make_unique<UnaryExpr>(Tok::SUB, std::move(oper));
     }
+    case Tok::AMPERSAND:
+        return std::make_unique<UnaryExpr>(Tok::AMPERSAND,parse_expression(BP_PREFIX));
+    case Tok::STAR:
+        return std::make_unique<UnaryExpr>(Tok::STAR,parse_expression(BP_PREFIX));
     case Tok::IDENT: {
         if (peek().type == Tok::LPAREN) {
             advance();
@@ -78,6 +107,8 @@ std::unique_ptr<ExprNode> Parser::nud(const Token& token) {
         }
         return std::make_unique<IdentifierNode>(token.text);
     }
+    case Tok::KW_NULLPTR:
+        return std::make_unique<NullPointerNode>();
     default:
         throw std::runtime_error("[Parser] unknown nud token '" + token.text + "' at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
     }
@@ -117,7 +148,7 @@ std::unique_ptr<ExprNode> Parser::parse_expression(int min_bp) {
 std::unique_ptr<StatementNode> Parser::parse_statement() {
     if (match(Tok::KW_RETURN)) {
         return parse_return_statement();
-    } else if (peek().type == Tok::KW_INT || peek().type == Tok::KW_FLOAT) {
+    } else if (peek().type == Tok::KW_INT || peek().type == Tok::KW_FLOAT || peek().type == Tok::KW_VOID) {
         return parse_declaration_statement();
     } else if (match(Tok::KW_IF)) {
         expect(Tok::LPAREN, "expect lparen after if");
@@ -212,18 +243,26 @@ std::unique_ptr<ProgramNode> Parser::parse_program() {
     std::unique_ptr<ProgramNode> program = std::make_unique<ProgramNode>();
     while (pos < tokens.size() && tokens[pos].type != Tok::EOF_TOK) {
 
-        if (pos+2 >= tokens.size() || tokens[pos+1].type != Tok::IDENT) {
-            std::string err_msg = "[Parser] only declarations and functions are allowed at top level, but got '" +
-                tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no) +
-                ", col " + std::to_string(tokens[pos].col_no);
-            if(pos + 1 < tokens.size())
-                err_msg += " and got " + tokens[pos+1].text + " at line " + std::to_string(tokens[pos+1].line_no) + ", col " + std::to_string(tokens[pos+1].col_no);
+        if (tokens[pos].type != Tok::KW_INT && tokens[pos].type != Tok::KW_FLOAT && tokens[pos].type != Tok::KW_VOID) {
             throw std::runtime_error(
-                err_msg
+                "[Parser] only declarations and functions are allowed at top level, but got '" +
+                tokens[pos].text + "' at line " + std::to_string(tokens[pos].line_no) +
+                ", col " + std::to_string(tokens[pos].col_no)
             );
         }
 
-        if(pos+2 < tokens.size() && tokens[pos+2].type == Tok::LPAREN){
+        // skip pointer stars to find the identifier (e.g. int *p; int **p;)
+        size_t ident_pos = pos + 1;
+        while (ident_pos < tokens.size() && tokens[ident_pos].type == Tok::STAR) ++ident_pos;
+
+        if (ident_pos >= tokens.size() || tokens[ident_pos].type != Tok::IDENT) {
+            throw std::runtime_error(
+                "[Parser] expected identifier after type at line " +
+                std::to_string(tokens[pos].line_no) + ", col " + std::to_string(tokens[pos].col_no)
+            );
+        }
+
+        if(ident_pos + 1 < tokens.size() && tokens[ident_pos + 1].type == Tok::LPAREN){
             std::unique_ptr<FunctionNode> func = parse_function();
             program->functions.push_back(std::move(func));
         }

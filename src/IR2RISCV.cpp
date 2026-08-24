@@ -16,12 +16,25 @@ void IR2RISCV::load_int_operand(const Value* v, const std::string& reg){
         emit("li " + reg + ", " + std::to_string(c->i_val));
     else if(auto* a = dynamic_cast<const Argument*>(v))
         emit("addi " + reg + ", " + arg_reg_of_.at(a) + ", 0");
-    else if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
-        emit("la " + reg + ", " + g->name);
-        emit("lw " + reg + ", 0(" + reg + ")");
-    }
     else
         emit("lw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
+}
+
+void IR2RISCV::load_pointer_operand(const Value* v, const std::string& reg){
+    if(auto* c = dynamic_cast<const ConstantInt*>(v)){
+        emit("li " + reg + ", " + std::to_string(c->i_val));
+    } else if(dynamic_cast<const NULLPointer*>(v)){
+        emit("li " + reg + ", 0");
+    } else if(auto* c = dynamic_cast<const Argument*>(v)){
+        emit("addi " + reg + ", " + arg_reg_of_.at(c) + ", 0");
+    } else if(auto* g = dynamic_cast<const GlobalVariable*>(v)){
+        emit("la " + reg + ", " + g->name);
+    } else if(const Instruction* ins = dynamic_cast<const Instruction*>(v)){
+        if(ins->op == Opcode::ALLOCA) emit("addi " + reg + ", " + "s0, " + std::to_string(slot_of_.at(v)));
+        else emit("lw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
+    } else {
+        emit("lw " + reg + ", " + std::to_string(slot_of_.at(v)) + "(s0)");
+    }
 }
 
 void IR2RISCV::load_float_operand(const Value* v, const std::string& reg){
@@ -84,6 +97,12 @@ void IR2RISCV::gen_program(const Module* mod){
                 std::stringstream ss;
                 ss << "0x" << std::hex << bits;
                 emit(".word " + ss.str());
+            } else if(dynamic_cast<PointerType*>(elem_type)){
+                auto* c = dynamic_cast<NULLPointer*>(glob->init_value);
+                if(!c) throw std::runtime_error("[IR2RISCV] pointer global variable '" + glob->name + "' should only be initialized with nullptr");
+                emit(".word 0");
+            } else {
+                throw std::runtime_error("[IR2RISCV] unsupported global variable type '" + elem_type->to_string() + "' for variable '" + glob->name + "'");
             }
         }
     }
@@ -104,11 +123,12 @@ void IR2RISCV::gen_function(const Function* func){
     int int_arg_count = 0;
     int float_arg_count = 0;
     for(const auto& arg : func->args){
-        if(arg->type == IntType::get()){
+        if(arg->type == IntType::get() || dynamic_cast<PointerType*>(arg->type)){
             arg_reg_of_[arg.get()] = "a" + std::to_string(int_arg_count++);
         } else if(arg->type == FloatType::get()){
             arg_reg_of_[arg.get()] = "fa" + std::to_string(float_arg_count++);
-        } else {
+        } 
+        else {
             throw std::runtime_error("[IR2RISCV] unsupported argument type '" + arg->type->to_string() + "' in function '" + func->name + "'");
         }
     }
@@ -148,22 +168,34 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
         switch(inst->op){
         case Opcode::ALLOCA: break;
         case Opcode::LOAD:
-            if(inst->type == IntType::get()){
-                load_int_operand(inst->operands[0],"t0");
-                store_int_result(inst.get(),"t0");
-            } else if(inst->type == FloatType::get()){
-                load_float_operand(inst->operands[0],"ft0");
+            load_pointer_operand(inst->operands[0],"t0");
+            if(inst->type == FloatType::get()){
+                emit("flw ft0, 0(t0)");
                 store_float_result(inst.get(),"ft0");
+            } else {
+                emit("lw t0, 0(t0)");
+                store_int_result(inst.get(),"t0");
             }
             break;
-        case Opcode::STORE:
-            if(inst->operands[0]->type == IntType::get()){
-                load_int_operand(inst->operands[0],"t0");
-                store_int_result(inst->operands[1],"t0");
-            } else if(inst->operands[0]->type == FloatType::get()){
-                load_float_operand(inst->operands[0],"ft0");
-                store_float_result(inst->operands[1],"ft0");
+        case Opcode::STORE:{
+            Value* val = inst->operands[0];
+            Value* addr = inst->operands[1];
+            if(val->type == FloatType::get()){
+                load_float_operand(val,"ft0");
+            } else if(dynamic_cast<PointerType*>(val->type)){
+                load_pointer_operand(val,"t0");
+            } else {
+                load_int_operand(val,"t0");
             }
+
+            load_pointer_operand(addr,"t1");
+
+            if(val->type == FloatType::get()){
+                emit("fsw ft0, 0(t1)");
+            } else {
+                emit("sw t0, 0(t1)");
+            }
+        }
             break;
         case Opcode::ADD:
             load_int_operand(inst->operands[0],"t0");
@@ -320,6 +352,8 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
                 load_int_operand(inst->operands[0],"a0");
             else if(func->return_type == FloatType::get())
                 load_float_operand(inst->operands[0],"fa0");
+            else if(dynamic_cast<PointerType*>(func->return_type))
+                load_pointer_operand(inst->operands[0],"a0");
             emit("j " + current_epilogue_);
             break;
         case Opcode::CALL: {
@@ -328,11 +362,13 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
             for(size_t i = 1;i < inst->operands.size();++i){
                 if(inst->operands[i]->type == IntType::get())
                     load_int_operand(inst->operands[i],"a" + std::to_string(temp_int_cnt++));
-                else
+                else if(inst->operands[i]->type == FloatType::get())
                     load_float_operand(inst->operands[i],"fa" + std::to_string(temp_float_cnt++));
+                else if(dynamic_cast<PointerType*>(inst->operands[i]->type))
+                    load_pointer_operand(inst->operands[i],"a" + std::to_string(temp_int_cnt++));
             }
             emit("call " + inst->operands[0]->name);
-            if(inst->type == IntType::get())
+            if(inst->type == IntType::get() || dynamic_cast<PointerType*>(inst->type))
                 store_int_result(inst.get(), "a0");
             else if(inst->type == FloatType::get())
                 store_float_result(inst.get(),"fa0");
