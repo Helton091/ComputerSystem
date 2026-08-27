@@ -49,6 +49,38 @@ static Opcode unop_opcode(Tok op, Type* operand_type){
     }
 }
 
+std::pair<Value*,Type*> AST2IR::gen_lvalue(AST::ExprNode* expr){
+    Value* addr = nullptr;
+    Type* elem_type = nullptr;
+    if(auto indent = dynamic_cast<AST::IdentifierNode*>(expr)){
+        addr = find_variable(indent->name);
+        if(!addr) throw std::runtime_error("[AST2IR] undefined variable " + indent->name);
+        elem_type = static_cast<PointerType*>(addr->type)->element_type;
+        return {addr,elem_type};
+    }
+    if(auto un = dynamic_cast<AST::UnaryExpr*>(expr)){
+        if(un->op==Tok::STAR){
+            addr = gen_expr(un->operand.get());
+            auto ptr_type = dynamic_cast<PointerType*>(addr->type);
+            if(!ptr_type) throw std::runtime_error("[AST2IR] try to derefenrence a non-pointer type");
+            elem_type = ptr_type->element_type;
+            return {addr, elem_type};
+        }
+    }
+    if(auto sb = dynamic_cast<AST::IndexExpr*>(expr)){
+        Value* subs = gen_expr(sb->index.get());
+        auto [addr_1, elem_type_1] = gen_lvalue(sb->base.get());
+        auto arr_tp = dynamic_cast<ArrayType*>(elem_type_1);
+        if(!arr_tp) throw std::runtime_error("only array type can be indexed");
+        addr = make_inst(curr_bb_,Opcode::GETPTR,PointerType::get(arr_tp->element_type),new_temp_name(),{addr_1,subs});
+        return {addr, arr_tp->element_type}; 
+    }
+
+
+    throw std::runtime_error("[AST2IR] try to gen_lvalue to a non-lvalue thing");
+    return {addr,elem_type};
+}
+
 std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
     module_ = std::make_unique<Module>();
     for(const std::unique_ptr<AST::DeclStmt>& glob_var : program->glob_vars){
@@ -167,6 +199,9 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         if(curr_stack.find(ds->var.name) != curr_stack.end()) throw std::runtime_error("[AST2IR] redefined variable '" + ds->var.name + "' in function '" + curr_func_->name + "'");
         Instruction* di = curr_func_->add_alloca(ds->var.name, PointerType::get(to_ir_type(ds->var.type.get())));
         curr_stack[ds->var.name] = di;
+        Type* elem_type = static_cast<PointerType*>(di->type)->element_type;
+        if(dynamic_cast<ArrayType*>(elem_type)) return;
+        //array type don't involve initialization
         if(ds->init){
             Type* elem_type = static_cast<PointerType*>(di->type)->element_type;
             Value* stored_value;
@@ -267,24 +302,12 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto un = dynamic_cast<AST::UnaryExpr*>(expr)){
         switch(un->op){
         case Tok::AMPERSAND: {
-            if(auto ident = dynamic_cast<AST::IdentifierNode*>(un->operand.get())){
-                Value* addr = find_variable(ident->name);
-                if(!addr) throw std::runtime_error(
-                    "[AST2IR] undefined variable '" + ident->name + 
-                    "' in function '" + curr_func_->name + "'"
-                );
-                return addr;
-            }
-            throw std::runtime_error("[AST2IR] currently only support &x");
+            auto [addr, elem_type] = gen_lvalue(un->operand.get());
+            return addr;
         }
         case Tok::STAR: {
-            Value* ptr_val = gen_expr(un->operand.get());
-            auto pt = dynamic_cast<PointerType*>(ptr_val->type);
-            if(!pt) throw std::runtime_error(
-                "[AST2IR] cannot dereference non-pointer type '" + 
-                ptr_val->type->to_string() + "' in function '" + curr_func_->name + "'"
-            );
-            return make_inst(curr_bb_, Opcode::LOAD, pt->element_type, new_temp_name(), {ptr_val});
+            auto [addr,elem_type] = gen_lvalue(un);
+            return make_inst(curr_bb_, Opcode::LOAD, elem_type, new_temp_name(), {addr});
         }
         case Tok::SUB: {
             Value* o = gen_expr(un->operand.get());
@@ -297,53 +320,27 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto is = dynamic_cast<AST::IdentifierNode*>(expr)){
         Value* addr = find_variable(is->name);
         if(!addr) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
-        if(auto p = dynamic_cast<PointerType*>(addr->type))
+        if(auto p = dynamic_cast<PointerType*>(addr->type)){
+            if(dynamic_cast<ArrayType*>(p->element_type)) throw std::runtime_error("[AST2IR] array type cannot be used as a value (" + is->name + ")" );
             return make_inst(curr_bb_, Opcode::LOAD, p->element_type, new_temp_name(), {addr});
+        }
         else
             throw std::runtime_error("[AST2IR] variable '" + is->name + "' is not an address");
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
-        Value* dest_addr = nullptr;
-        Type* elem_type = nullptr;
-        std::string lhs_name;
-
-        if(auto ident = dynamic_cast<AST::IdentifierNode*>(ae->lhs.get())){
-            lhs_name = ident->name;
-            Value* alloca_left = find_variable(lhs_name);
-            if(!alloca_left) throw std::runtime_error(
-                "[AST2IR] undefined variable '" + lhs_name +
-                "' assigned to in function '" + curr_func_->name + "'"
-            );
-            elem_type = static_cast<PointerType*>(alloca_left->type)->element_type;
-            dest_addr = alloca_left;
-        }
-        else if(auto un = dynamic_cast<AST::UnaryExpr*>(ae->lhs.get())){
-            if(un->op != Tok::STAR)
-                throw std::runtime_error("[AST2IR] left side of assignment must be a variable or dereference");
-            Value* ptr_val = gen_expr(un->operand.get());
-            auto pt = dynamic_cast<PointerType*>(ptr_val->type);
-            if(!pt) throw std::runtime_error(
-                "[AST2IR] cannot dereference non-pointer type in assignment"
-            );
-            elem_type = pt->element_type;
-            dest_addr = ptr_val;
-            lhs_name = "*<deref>";
-        }
-        else {
-            throw std::runtime_error("[AST2IR] left side of assignment must be a variable or dereference");
-        }
+        auto [dest_addr,elem_type] = gen_lvalue(ae->lhs.get());
 
         Value* rhs_inst;
         if(dynamic_cast<AST::NullPointerNode*>(ae->rhs.get())){
             auto elem_pt = dynamic_cast<PointerType*>(elem_type);
             if(!elem_pt)
-                throw std::runtime_error("[AST2IR] nullptr cannot be assigned to non-pointer location '" + lhs_name + "'");
+                throw std::runtime_error("[AST2IR] nullptr cannot be assigned to non-pointer location");
             rhs_inst = module_->get_nullptr(elem_pt->element_type);
         } else {
             rhs_inst = gen_expr(ae->rhs.get());
         }
 
         expect_type(elem_type, rhs_inst,
-                    "in assignment to '" + lhs_name + "'");
+                    "in assignment ");
         make_inst(curr_bb_, Opcode::STORE, VoidType::get(), "", {rhs_inst, dest_addr});
         return rhs_inst;
 
@@ -375,6 +372,9 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
 
     } else if(dynamic_cast<AST::NullPointerNode*>(expr)){
         throw std::runtime_error("[AST2IR] nullptr must be used in a pointer context");
+    } else if(auto ie = dynamic_cast<AST::IndexExpr*>(expr)){
+        auto [addr, elem_type] = gen_lvalue(ie);
+        return make_inst(curr_bb_,Opcode::LOAD,elem_type,new_temp_name(),{addr});
     }
     else{
         throw std::runtime_error("[AST2IR] unknown AST expression node type in function '" + curr_func_->name + "'");
@@ -404,6 +404,7 @@ Type* AST2IR::to_ir_type(AST::Type* ast_type){
     if(dynamic_cast<AST::FloatType*>(ast_type)) return FloatType::get();
     if(dynamic_cast<AST::VoidType*>(ast_type)) return VoidType::get();
     if(auto p = dynamic_cast<AST::PointerType*>(ast_type)) return PointerType::get(to_ir_type(p->pointee.get()));
+    if(auto a = dynamic_cast<AST::ArrayType*>(ast_type)) return ArrayType::get(to_ir_type(a->base_type.get()),a->length);
     throw std::runtime_error("[AST2IR] encounter unknown AST type");
 }
 

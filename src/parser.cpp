@@ -32,6 +32,7 @@ int Parser::left_binding_power(Tok type) {
         case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP;
         case Tok::ADD: case Tok::SUB: return BP_ADD;
         case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return BP_MUL;
+        case Tok::LBRACKET: return BP_PREFIX+1;
         default: return -1;
     }
 }
@@ -43,6 +44,7 @@ int Parser::right_binding_power(Tok type) {
         case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP + 1;
         case Tok::ADD: case Tok::SUB: return BP_ADD + 1;
         case Tok::STAR: case Tok::SLASH: case Tok::PERCENT: return BP_MUL + 1;
+        case Tok::LBRACKET: return 0;
         default: return -1;
     }
 }
@@ -57,13 +59,20 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
     case Tok::EQ: case Tok::NE:
     case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT:
         return std::make_unique<BinaryExpr>(token.type, std::move(left), std::move(right));
+    case Tok::LBRACKET:{
+        std::unique_ptr<IndexExpr> result = std::make_unique<IndexExpr>(std::move(left),std::move(right));
+        expect(Tok::RBRACKET,"[parser] expect corressponding ] in index expression");
+        return result;
+    }
+        
     case Tok::ASSIGN: {
         bool is_lvalue = dynamic_cast<IdentifierNode*>(left.get()) != nullptr ||
                         (dynamic_cast<UnaryExpr*>(left.get()) != nullptr &&
-                        dynamic_cast<UnaryExpr*>(left.get())->op == Tok::STAR);
+                        dynamic_cast<UnaryExpr*>(left.get())->op == Tok::STAR) || 
+                        dynamic_cast<IndexExpr*>(left.get()) != nullptr;
         if (!is_lvalue) {
             throw std::runtime_error(
-                "[Parser] left side of assignment must be a variable or dereference at line " +
+                "[Parser] left side of assignment must be a variable, dereference or array element at line " +
                 std::to_string(token.line_no) + ", col " + std::to_string(token.col_no)
             );
         }
@@ -120,9 +129,22 @@ std::unique_ptr<DeclStmt> Parser::parse_declaration_statement() {
     const Token& token = expect(Tok::IDENT, "expect variable name");
     std::string name = token.text;
 
+    bool is_array = false;
+    if(match(Tok::LBRACKET)){
+        const Token& tok = expect(Tok::INT_NUMBER,"expect array length");
+        int arr_len = std::stoi(tok.text);
+        if(arr_len <= 0) throw std::runtime_error("[parser] array length should be a positive number, but got " + std::to_string(arr_len) + " at line " + std::to_string(tok.line_no) + ", col " + std::to_string(tok.col_no));
+        expect(Tok::RBRACKET,"[parser] array declaration should have a pair of [], missing ]");
+        ty = std::make_unique<ArrayType>(std::move(ty),arr_len);
+        is_array = true;
+    }
+
+    if(match(Tok::LBRACKET)) throw std::runtime_error("[parser] unsupported language trait: multi-dimension array at line " + std::to_string(previous().line_no) + ", col " + std::to_string(previous().col_no));
+
     std::unique_ptr<ExprNode> init = nullptr;
     if (match(Tok::ASSIGN)) {
-        init = parse_expression();
+        if(!is_array) init = parse_expression();
+        else throw std::runtime_error("[parser] don't support array initialization yet at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
     }
 
     expect(Tok::SEMICOLON, "Expected ';'");

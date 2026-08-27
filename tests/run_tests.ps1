@@ -81,6 +81,18 @@ $tests = @(
     @{ name = "pointer/float_ptr";  expect = 1 },
     @{ name = "pointer/null_ptr";   expect = 0 },
     @{ name = "pointer/void_ptr";   expect = 0 },
+    # array
+    @{ name = "array/store_load"; expect = 5 },
+    @{ name = "array/var_index"; expect = 7 },
+    @{ name = "array/expr_index"; expect = 9 },
+    @{ name = "array/nested_index"; expect = 8 },
+    @{ name = "array/all_elems"; expect = 10 },
+    @{ name = "array/float_elem"; expect_fa0 = 1.5 },
+    @{ name = "array/stack_layout"; expect = 35 },
+    @{ name = "array/loop_fill_sum"; expect = 45 },
+    @{ name = "array/addr_of_elem"; expect = 6 },
+
+
     # error cases (expect compile-time failure)
     @{ name = "error/redefined_var";       expect_compile_error = $true },
     @{ name = "error/out_of_scope";        expect_compile_error = $true },
@@ -100,6 +112,12 @@ $tests = @(
     @{ name = "error/ptr_type_mismatch";        expect_compile_error = $true },
     @{ name = "error/ptr_non_zero_init";        expect_compile_error = $true },
     @{ name = "error/deref_int";                expect_compile_error = $true },
+    @{ name = "error/arr_bare_value";   expect_compile_error = $true },
+    @{ name = "error/arr_compare";     expect_compile_error = $true },
+    @{ name = "error/arr_assign";      expect_compile_error = $true },
+    @{ name = "error/arr_index_float"; expect_compile_error = $true },
+    @{ name = "error/arr_index_scalar";expect_compile_error = $true },
+    @{ name = "error/arr_size_zero";     expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },

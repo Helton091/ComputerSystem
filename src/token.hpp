@@ -7,13 +7,14 @@ enum class Tok {
 
     KW_INT, KW_RETURN, KW_FLOAT, KW_VOID, KW_NULLPTR,
 
-    LPAREN, RPAREN, LCURLY, RCURLY, SEMICOLON, COMMA,
+    LPAREN, RPAREN, LCURLY, RCURLY, LBRACKET, RBRACKET, 
+    SEMICOLON, COMMA,
 
     ADD, SUB, STAR, SLASH, PERCENT, AMPERSAND /* & */,
     AND_AND,  
     ASSIGN,
     EQ, NE, LT, GT, LE, GE,
-    KW_IF, KW_ELSE, KW_WHILE,
+    KW_IF, KW_ELSE, KW_WHILE, KW_FOR, 
 };
 
 inline std::unordered_map<std::string, Tok> keywords = {
@@ -25,6 +26,7 @@ inline std::unordered_map<std::string, Tok> keywords = {
     {"float", Tok::KW_FLOAT},
     {"void", Tok::KW_VOID},
     {"nullptr", Tok::KW_NULLPTR},
+    {"for", Tok::KW_FOR},
 };
 
 struct Token {

@@ -27,6 +27,8 @@ std::vector<Token> Lexer::tokenize() {
         case '}': tokens.push_back({Tok::RCURLY, "}", line_no, col_no}); ++i; ++col_no; break;
         case ';': tokens.push_back({Tok::SEMICOLON, ";", line_no, col_no}); ++i; ++col_no; break;
         case ',': tokens.push_back({Tok::COMMA, ",", line_no, col_no}); ++i; ++col_no; break;
+        case '[': tokens.push_back({Tok::LBRACKET,"[",line_no,col_no}); ++i; ++col_no; break;
+        case ']': tokens.push_back({Tok::RBRACKET,"]",line_no,col_no}); ++i; ++col_no; break;
         case '=':
             if (i + 1 < source_.size() && source_[i + 1] == '=') {
                 tokens.push_back({Tok::EQ, "==", line_no, col_no}); i += 2; col_no += 2; break;

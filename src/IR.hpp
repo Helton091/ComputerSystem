@@ -61,6 +61,30 @@ private:
     explicit PointerType(Type* elem) : element_type(elem){}
 };
 
+struct ArrayHashKey{
+    size_t operator()(const std::pair<Type*,int>& p) const{
+        return std::hash<Type*>{}(p.first) ^ (std::hash<int>{}(p.second) << 1);
+    }
+};
+
+class ArrayType : public Type{
+public:
+    Type* element_type;
+    int length;
+    static ArrayType* get(Type* elem, int len){
+        static std::unordered_map<std::pair<Type*,int>,ArrayType*,ArrayHashKey> map;
+        auto it = map.find({elem,len});
+        if(it != map.end()) return it->second;
+        auto p = new ArrayType(elem,len);
+        map[{elem,len}] = p;
+        return p;
+    }
+    int size() const override{return element_type->size() * length;}
+    std::string to_string() const override{return "[" + std::to_string(length) + " * " + element_type->to_string() + "]";}
+private:
+    explicit ArrayType(Type* elem_type,int len) : element_type(elem_type), length(len){}
+};
+
 enum class Opcode{
     ALLOCA, LOAD, STORE,
     ADD, SUB, MUL, DIV, REM, NEG,
@@ -68,7 +92,7 @@ enum class Opcode{
     LT, GT, LE, GE, EQ, NE,
     FLT,FGT,FLE,FGE,FEQ,FNE,
     BR, JMP, RET,
-    CALL,
+    CALL, GETPTR, 
     PHI
 };
 

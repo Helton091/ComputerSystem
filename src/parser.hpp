@@ -18,6 +18,7 @@ public:
     static constexpr int BP_CMP      = 5;   // < <= > >=
     static constexpr int BP_EQ       = 4;   // == !=
     static constexpr int BP_ASSIGN   = 1;   // =
+    
 
     const Token& peek() {
         if (pos < tokens.size()) return tokens[pos];

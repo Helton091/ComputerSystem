@@ -25,6 +25,7 @@ private:
     void gen_stmt(AST::StatementNode* stmt);
     Value* gen_expr(AST::ExprNode* expr);
     Type* to_ir_type(AST::Type* ast_type);
+    std::pair<Value*,Type*> gen_lvalue(AST::ExprNode* expr);
 };
 
 

@@ -1,0 +1,7 @@
+int main(){
+    int a[3];
+    int* p;
+    p = &a[1];
+    *p = 6;
+    return a[1];
+}

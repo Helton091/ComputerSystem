@@ -40,6 +40,15 @@ public:
     std::string to_string() override{return pointee->to_string() + "*";}
 };
 
+class ArrayType : public Type{
+public:
+    int length;
+    std::unique_ptr<Type> base_type;
+    int size() const override {return base_type->size() * length;}
+    std::string to_string() override{return base_type->to_string() + "[" + std::to_string(length) + "]";}
+    explicit ArrayType(std::unique_ptr<Type> base, int len) : length(len),base_type(std::move(base)){}
+};
+
 struct TypedName{
     std::string name;
     std::unique_ptr<Type> type;
@@ -122,7 +131,28 @@ public:
     }
 };
 
+class IndexExpr : public ExprNode{
+public:
+    std::unique_ptr<ExprNode> base;
+    std::unique_ptr<ExprNode> index;
+    IndexExpr(std::unique_ptr<ExprNode> b,std::unique_ptr<ExprNode> idx) : base(std::move(b)),index(std::move(idx)){}
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "IndexExpr\n";
+        base->dump(indent + 2);
+        index->dump(indent + 2);
+    }
+};
+
 class StatementNode : public ASTNode {};
+
+class ForStmt : public StatementNode{
+public:
+    std::unique_ptr<StatementNode> init; //may be nullptr
+    std::unique_ptr<ExprNode> cond;
+    std::unique_ptr<ExprNode> update;
+    std::unique_ptr<StatementNode> body;
+     
+};
 
 class WhileStmt : public StatementNode {
 public:
@@ -187,6 +217,8 @@ public:
         operand->dump(indent + 2);
     }
 };
+
+
 
 class BinaryExpr : public ExprNode {
 public:

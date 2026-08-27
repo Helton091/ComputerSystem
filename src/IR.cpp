@@ -169,6 +169,7 @@ static std::string op_str(Opcode op){
     case Opcode::JMP:    return "jmp";
     case Opcode::RET:    return "ret";
     case Opcode::CALL:   return "call";
+    case Opcode::GETPTR: return "getptr";
     case Opcode::PHI:    return "phi";
     }
     return "?";
@@ -367,6 +368,19 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
             throw std::runtime_error("[IR] the destination of store must be pointertype");
         if(new_inst->type != VoidType::get()) throw std::runtime_error("[IR] store's type must be void");
         if(type1 != PointerType::get(operands[0]->type) && (!dynamic_cast<NULLPointer*>(operands[0]))) throw std::runtime_error("[IR] store's second operand should be the pointer type of the first one");
+    }
+    break;
+
+    case Opcode::GETPTR:{
+        std::vector<Value*> operands = new_inst->operands;
+        if(operands.size() != 2) throw std::runtime_error("[IR] get pointer should have 2 operands");
+        auto type1 = dynamic_cast<PointerType*>(operands[0]->type);
+        if(!type1) throw std::runtime_error("[IR] base type of get pointer should have pointer type");
+        if(!dynamic_cast<IntType*>(operands[1]->type)) throw std::runtime_error("[IR] the second operand of GETPTR should be int type");
+        if(auto ar_tp = dynamic_cast<ArrayType*>(type1->element_type)){
+            if(new_inst->type != PointerType::get(ar_tp->element_type)) throw std::runtime_error("[IR] get pointer's return type should be equal to the base type");
+        }
+        else if(new_inst->type != PointerType::get(type1->element_type)) throw std::runtime_error("[IR] get pointer's return type should be equal to the base type");
     }
     break;
     case Opcode::BR:{

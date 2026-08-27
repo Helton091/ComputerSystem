@@ -134,12 +134,15 @@ void IR2RISCV::gen_function(const Function* func){
     }
 
     slot_of_.clear();
-    next_offset_ = -12;
+    next_offset_ = -8;
     for(const auto& bb : func->blocks){
         for(const auto& inst : bb->insts){
-            if(inst->op == Opcode::ALLOCA || inst->type != VoidType::get()){
+            if(inst->op == Opcode::ALLOCA){
+                next_offset_ -= static_cast<PointerType*>(inst->type)->element_type->size();
                 slot_of_[inst.get()] = next_offset_;
+            } else if(inst->type != VoidType::get()){
                 next_offset_ -= inst->type->size();
+                slot_of_[inst.get()] = next_offset_;
             }
         }
     }
@@ -374,6 +377,16 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
                 store_float_result(inst.get(),"fa0");
             break;
         }
+        case Opcode::GETPTR:{
+            load_int_operand(inst->operands[1],"t1");
+            load_pointer_operand(inst->operands[0],"t0");
+            auto pt = dynamic_cast<PointerType*>(inst->type);
+            if(pt->element_type->size() == 4) emit("slli t1, t1, 2");
+            else throw std::runtime_error("[IR2RISCV] getptr unsupported type");
+            emit("add   t0, t0, t1");
+            store_int_result(inst.get(),"t0");
+        }
+        break;
         case Opcode::PHI:
         default:
             throw std::runtime_error("[IR2RISCV] unknown opcode " + std::to_string(static_cast<int>(inst->op)) + " in function '" + func->name + "'");
