@@ -147,11 +147,34 @@ class StatementNode : public ASTNode {};
 
 class ForStmt : public StatementNode{
 public:
-    std::unique_ptr<StatementNode> init; //may be nullptr
+    std::unique_ptr<StatementNode> init; // may be nullptr
     std::unique_ptr<ExprNode> cond;
     std::unique_ptr<ExprNode> update;
     std::unique_ptr<StatementNode> body;
-     
+
+    ForStmt(std::unique_ptr<StatementNode> i,
+            std::unique_ptr<ExprNode> c,
+            std::unique_ptr<ExprNode> u,
+            std::unique_ptr<StatementNode> b)
+        : init(std::move(i)), cond(std::move(c)), update(std::move(u)), body(std::move(b)) {}
+
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "ForStmt\n";
+        if (init) {
+            std::cout << std::string(indent + 2, ' ') << "Init:\n";
+            init->dump(indent + 4);
+        }
+        if (cond) {
+            std::cout << std::string(indent + 2, ' ') << "Cond:\n";
+            cond->dump(indent + 4);
+        }
+        if (update) {
+            std::cout << std::string(indent + 2, ' ') << "Update:\n";
+            update->dump(indent + 4);
+        }
+        std::cout << std::string(indent + 2, ' ') << "Body:\n";
+        body->dump(indent + 4);
+    }
 };
 
 class WhileStmt : public StatementNode {

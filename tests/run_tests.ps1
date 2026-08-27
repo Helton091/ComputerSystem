@@ -91,7 +91,13 @@ $tests = @(
     @{ name = "array/stack_layout"; expect = 35 },
     @{ name = "array/loop_fill_sum"; expect = 45 },
     @{ name = "array/addr_of_elem"; expect = 6 },
-
+    # for
+    @{ name = "for/basic";       expect = 45 },
+    @{ name = "for/nested";      expect = 60 },
+    @{ name = "for/null_init_1"; expect = 4 },
+    @{ name = "for/null_init_2"; expect = 5 },
+    @{ name = "for/scope_reuse"; expect = 18 },
+    @{ name = "for/scope_after"; expect = 0 },
 
     # error cases (expect compile-time failure)
     @{ name = "error/redefined_var";       expect_compile_error = $true },

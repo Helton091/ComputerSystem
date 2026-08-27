@@ -284,6 +284,31 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
             make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
 
         curr_bb_ = end_bb;
+    } else if(auto fs = dynamic_cast<AST::ForStmt*>(stmt)){
+        enter_scope(); //for init
+        gen_stmt(fs->init.get());
+        BasicBlock* cond_bb = curr_func_->add_block(new_block_name("_for_cond_"));
+        BasicBlock* body_bb = curr_func_->add_block(new_block_name("_for_body_"));
+        BasicBlock* end_bb  = curr_func_->add_block(new_block_name("_for_end_"));
+        if(!curr_bb_->is_terminated())
+            make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
+        
+        curr_bb_ = cond_bb;
+        Value* cond_v = fs->cond ? gen_expr(fs->cond.get()) : module_->get_const(1);
+        expect_type(IntType::get(), cond_v,
+                    "in condition of 'for' statement");
+        make_inst(curr_bb_,Opcode::BR,VoidType::get(),"",{cond_v,body_bb,end_bb});
+        curr_bb_ = body_bb;
+        gen_stmt(fs->body.get());
+        if(fs->update) gen_expr(fs->update.get());
+        if(!curr_bb_->is_terminated())
+            make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
+
+        curr_bb_ = end_bb;
+
+
+
+        exit_scope(); //for init
     }
 }
 

@@ -1,0 +1,7 @@
+// scope_reuse: 两个 for 各自声明 i，互不冲突
+int main() {
+    int r = 0;
+    for(int i=0;i<3;i=i+1){ r = r + i; }
+    for(int i=5;i>0;i=i-1){ r = r + i; }
+    return r;      // 3 + 15 = 18
+}

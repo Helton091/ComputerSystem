@@ -192,6 +192,24 @@ std::unique_ptr<StatementNode> Parser::parse_statement() {
         expect(Tok::RPAREN, "expect rparen after while");
         std::unique_ptr<StatementNode> body = parse_statement();
         return std::make_unique<WhileStmt>(std::move(cond), std::move(body));
+    } else if (match(Tok::KW_FOR)){
+        expect(Tok::LPAREN, "expect lparen after for");
+        std::unique_ptr<StatementNode> init = nullptr;
+        if(!match(Tok::SEMICOLON)){
+            init = parse_statement();
+        }
+        std::unique_ptr<ExprNode> cond = nullptr;
+        if(!match(Tok::SEMICOLON)){
+            cond = parse_expression();
+            expect(Tok::SEMICOLON,"expect the second semicolon in for");
+        }
+        std::unique_ptr<ExprNode> update = nullptr;
+        if(!match(Tok::RPAREN)){
+            update = parse_expression();
+            expect(Tok::RPAREN,"expect right rparen in for");
+        }
+        std::unique_ptr<StatementNode> body = parse_statement();
+        return std::make_unique<ForStmt>(std::move(init),std::move(cond),std::move(update),std::move(body));
     }
     // 表达式语句
     std::unique_ptr<ExprNode> expr = parse_expression();
