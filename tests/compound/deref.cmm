@@ -1,0 +1,6 @@
+int main() {
+    int x = 7;
+    int* p = &x;
+    *p += 3;
+    return x;   // expect 10
+}

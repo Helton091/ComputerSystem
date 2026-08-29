@@ -2,6 +2,13 @@
 
 using namespace AST;
 
+static bool is_lvalue(ExprNode* expr){
+    return dynamic_cast<IdentifierNode*>(expr) != nullptr ||
+    (dynamic_cast<UnaryExpr*>(expr) != nullptr &&
+    dynamic_cast<UnaryExpr*>(expr)->op == Tok::STAR) || 
+    dynamic_cast<IndexExpr*>(expr) != nullptr;
+}
+
 std::unique_ptr<AST::Type> Parser::parse_type_tok(const std::string& err_msg){
     const Token& token = advance();
     std::unique_ptr<AST::Type> base = nullptr;
@@ -27,6 +34,9 @@ std::unique_ptr<AST::Type> Parser::parse_type_tok(const std::string& err_msg){
 
 int Parser::left_binding_power(Tok type) {
     switch (type) {
+        case Tok::ADD_ASSIGN: case Tok::SUB_ASSIGN:
+        case Tok::STAR_ASSIGN: case Tok::SLASH_ASSIGN:
+        case Tok::PERCENT_ASSIGN:
         case Tok::ASSIGN: return BP_ASSIGN;
         case Tok::EQ: case Tok::NE: return BP_EQ;
         case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP;
@@ -39,7 +49,10 @@ int Parser::left_binding_power(Tok type) {
 
 int Parser::right_binding_power(Tok type) {
     switch (type) {
-        case Tok::ASSIGN: return BP_ASSIGN;     
+        case Tok::ADD_ASSIGN: case Tok::SUB_ASSIGN:
+        case Tok::STAR_ASSIGN: case Tok::SLASH_ASSIGN:
+        case Tok::PERCENT_ASSIGN: 
+        case Tok::ASSIGN: return BP_ASSIGN;    
         case Tok::EQ: case Tok::NE: return BP_EQ + 1;
         case Tok::LT: case Tok::LE: case Tok::GE: case Tok::GT: return BP_CMP + 1;
         case Tok::ADD: case Tok::SUB: return BP_ADD + 1;
@@ -66,11 +79,8 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
     }
         
     case Tok::ASSIGN: {
-        bool is_lvalue = dynamic_cast<IdentifierNode*>(left.get()) != nullptr ||
-                        (dynamic_cast<UnaryExpr*>(left.get()) != nullptr &&
-                        dynamic_cast<UnaryExpr*>(left.get())->op == Tok::STAR) || 
-                        dynamic_cast<IndexExpr*>(left.get()) != nullptr;
-        if (!is_lvalue) {
+        
+        if (!is_lvalue(left.get())) {
             throw std::runtime_error(
                 "[Parser] left side of assignment must be a variable, dereference or array element at line " +
                 std::to_string(token.line_no) + ", col " + std::to_string(token.col_no)
@@ -78,6 +88,21 @@ std::unique_ptr<ExprNode> Parser::led(const Token& token, std::unique_ptr<ExprNo
         }
         return std::make_unique<AssignmentExpr>(std::move(left), std::move(right));
     }
+
+    case Tok::ADD_ASSIGN:
+    case Tok::SUB_ASSIGN:
+    case Tok::STAR_ASSIGN:
+    case Tok::SLASH_ASSIGN:
+    case Tok::PERCENT_ASSIGN:{
+        if (!is_lvalue(left.get())) {
+            throw std::runtime_error(
+                "[Parser] left side of assignment must be a variable, dereference or array element at line " +
+                std::to_string(token.line_no) + ", col " + std::to_string(token.col_no)
+            );
+        }
+        return std::make_unique<CompoundAssignExpr>(std::move(left),token.type,std::move(right));
+    }
+
     default:
         throw std::runtime_error("[Parser] unknown led token '" + token.text + "' at line " + std::to_string(token.line_no) + ", col " + std::to_string(token.col_no));
     }

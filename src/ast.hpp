@@ -143,6 +143,21 @@ public:
     }
 };
 
+class CompoundAssignExpr : public ExprNode{
+public:
+    std::unique_ptr<ExprNode> lhs;
+    Tok op;
+    std::unique_ptr<ExprNode> rhs;
+    CompoundAssignExpr(std::unique_ptr<ExprNode> l, Tok oper, std::unique_ptr<ExprNode> r)
+        : lhs(std::move(l)), op(oper), rhs(std::move(r)) {}
+    
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "CompoundAssignExpr(" << static_cast<int>(op) << ")\n";
+        lhs->dump(indent + 2);
+        rhs->dump(indent + 2);
+    }
+};
+
 class StatementNode : public ASTNode {};
 
 class ForStmt : public StatementNode{

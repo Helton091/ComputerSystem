@@ -17,10 +17,36 @@ std::vector<Token> Lexer::tokenize() {
             ++i; ++col_no; continue;
         }
         switch (c) {
-        case '+': tokens.push_back({Tok::ADD, "+", line_no, col_no}); ++i; ++col_no; break;
-        case '-': tokens.push_back({Tok::SUB, "-", line_no, col_no}); ++i; ++col_no; break;
-        case '*': tokens.push_back({Tok::STAR, "*", line_no, col_no}); ++i; ++col_no; break;
-        case '%': tokens.push_back({Tok::PERCENT, "%", line_no, col_no}); ++i; ++col_no; break;
+        case '+': 
+            if(i+1 < source_.size() && source_[i+1] == '+'){
+                tokens.push_back({Tok::ADD_ADD,"++",line_no,col_no}); i+=2; col_no+=2; break;
+            } else if(i+1 < source_.size() && source_[i+1] == '='){
+                tokens.push_back({Tok::ADD_ASSIGN,"+=",line_no,col_no}); i+=2; col_no+=2; break;
+            }
+            else {
+                tokens.push_back({Tok::ADD, "+", line_no, col_no}); ++i; ++col_no; break;
+            }
+        case '-': 
+            if(i+1 < source_.size() && source_[i+1] == '-'){
+                tokens.push_back({Tok::SUB_SUB,"--",line_no,col_no}); i+=2; col_no+=2; break;
+            } else if(i+1 < source_.size() && source_[i+1] == '='){
+                tokens.push_back({Tok::SUB_ASSIGN,"-=",line_no,col_no}); i+=2; col_no+=2; break;
+            }
+            else {
+                tokens.push_back({Tok::SUB, "-", line_no, col_no}); ++i; ++col_no; break;
+            }
+        case '*': 
+            if(i+1 < source_.size() && source_[i+1] == '='){
+                tokens.push_back({Tok::STAR_ASSIGN,"*=",line_no,col_no}); i+=2; col_no+=2; break;
+            } else {
+                tokens.push_back({Tok::STAR, "*", line_no, col_no}); ++i; ++col_no; break;
+            }
+        case '%': 
+            if(i+1 < source_.size() && source_[i+1] == '='){
+                tokens.push_back({Tok::PERCENT_ASSIGN,"%=",line_no,col_no}); i+=2; col_no+=2; break;
+            } else {
+                tokens.push_back({Tok::PERCENT, "%", line_no, col_no}); ++i; ++col_no; break;
+            }
         case '(': tokens.push_back({Tok::LPAREN, "(", line_no, col_no}); ++i; ++col_no; break;
         case ')': tokens.push_back({Tok::RPAREN, ")", line_no, col_no}); ++i; ++col_no; break;
         case '{': tokens.push_back({Tok::LCURLY, "{", line_no, col_no}); ++i; ++col_no; break;
@@ -55,6 +81,10 @@ std::vector<Token> Lexer::tokenize() {
                 }
                 i += 2;  // 跳过 */
                 break;
+            }
+
+            if(i+1<source_.size() && source_[i+1]=='='){
+                tokens.push_back({Tok::SLASH_ASSIGN,"/=",line_no,col_no}); i+=2; col_no+=2; break;
             }
             tokens.push_back({Tok::SLASH, "/", line_no, col_no});
             ++i; ++col_no;

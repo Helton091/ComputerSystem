@@ -21,6 +21,20 @@ static void expect_type(Type* expected, Value* actual, const std::string& contex
     
 }
 
+static Opcode compound_binop_opcode(Tok op, Type* operand_type){
+    bool flt = is_float_type(operand_type);
+    switch(op){
+    case Tok::ADD_ASSIGN:    return flt ? Opcode::FADD : Opcode::ADD;
+    case Tok::SUB_ASSIGN:    return flt ? Opcode::FSUB : Opcode::SUB;
+    case Tok::STAR_ASSIGN:   return flt ? Opcode::FMUL : Opcode::MUL;
+    case Tok::SLASH_ASSIGN:  return flt ? Opcode::FDIV : Opcode::DIV;
+    case Tok::PERCENT_ASSIGN:
+        if(flt) throw std::runtime_error("[AST2IR] float type does not support modulo operation");
+        return Opcode::REM;
+    default: throw std::runtime_error("[AST2IR] cannot translate compound binary token " + std::to_string(static_cast<int>(op)) + " to opcode");
+    }
+}
+
 static Opcode binop_opcode(Tok op, Type* operand_type){
     bool flt = is_float_type(operand_type);
     switch(op){
@@ -400,6 +414,17 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto ie = dynamic_cast<AST::IndexExpr*>(expr)){
         auto [addr, elem_type] = gen_lvalue(ie);
         return make_inst(curr_bb_,Opcode::LOAD,elem_type,new_temp_name(),{addr});
+    } else if(auto cae = dynamic_cast<AST::CompoundAssignExpr*>(expr)){
+        auto [addr, elem_type] = gen_lvalue(cae->lhs.get());
+        Value* old_v = make_inst(curr_bb_,Opcode::LOAD,elem_type,new_temp_name(),{addr});
+        Value* right_v = gen_expr(cae->rhs.get());
+        expect_type(right_v->type,old_v,"in compound assignment expression");
+        Opcode new_op = compound_binop_opcode(cae->op,right_v->type);
+        Value* new_v = nullptr;
+        new_v = make_inst(curr_bb_,new_op,right_v->type,"",{old_v,right_v});
+        make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{new_v,addr});
+        return new_v;
+
     }
     else{
         throw std::runtime_error("[AST2IR] unknown AST expression node type in function '" + curr_func_->name + "'");

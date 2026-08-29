@@ -98,6 +98,14 @@ $tests = @(
     @{ name = "for/null_init_2"; expect = 5 },
     @{ name = "for/scope_reuse"; expect = 18 },
     @{ name = "for/scope_after"; expect = 0 },
+    #compound like +=
+    @{ name = "compound/basic_int"; expect = 2 },
+    @{ name = "compound/basic_float"; expect = 1 },
+    @{ name = "compound/value_chain"; expect = 10 },
+    @{ name = "compound/in_condition"; expect = 42 },
+    @{ name = "compound/deref"; expect = 10 },
+    @{ name = "compound/array_elem"; expect = 32 },
+
 
     # error cases (expect compile-time failure)
     @{ name = "error/redefined_var";       expect_compile_error = $true },
@@ -124,6 +132,12 @@ $tests = @(
     @{ name = "error/arr_index_float"; expect_compile_error = $true },
     @{ name = "error/arr_index_scalar";expect_compile_error = $true },
     @{ name = "error/arr_size_zero";     expect_compile_error = $true },
+    # compound assignment errors
+    @{ name = "error/compound_type_mismatch"; expect_compile_error = $true },
+    @{ name = "error/compound_float_mod";    expect_compile_error = $true },
+    @{ name = "error/compound_pointer";      expect_compile_error = $true },
+    @{ name = "error/compound_array";        expect_compile_error = $true },
+    @{ name = "error/compound_not_lvalue";   expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },
