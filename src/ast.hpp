@@ -160,6 +160,20 @@ public:
 
 class StatementNode : public ASTNode {};
 
+class BreakStmt : public StatementNode {
+public:
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "BreakStmt\n";
+    }
+};
+
+class ContinueStmt : public StatementNode {
+public:
+    void dump(int indent = 0) const override {
+        std::cout << std::string(indent, ' ') << "ContinueStmt\n";
+    }
+};
+
 class ForStmt : public StatementNode{
 public:
     std::unique_ptr<StatementNode> init; // may be nullptr

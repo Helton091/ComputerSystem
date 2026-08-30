@@ -26,6 +26,10 @@ private:
     Value* gen_expr(AST::ExprNode* expr);
     Type* to_ir_type(AST::Type* ast_type);
     std::pair<Value*,Type*> gen_lvalue(AST::ExprNode* expr);
+
+    std::vector<BasicBlock*> break_stack_;
+    std::vector<BasicBlock*> continue_stack_;
+
 };
 
 

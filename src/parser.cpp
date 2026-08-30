@@ -235,8 +235,14 @@ std::unique_ptr<StatementNode> Parser::parse_statement() {
         }
         std::unique_ptr<StatementNode> body = parse_statement();
         return std::make_unique<ForStmt>(std::move(init),std::move(cond),std::move(update),std::move(body));
+    } else if (match(Tok::KW_BREAK)){
+        expect(Tok::SEMICOLON,"expect semicolon in break");
+        return std::make_unique<BreakStmt>();
+    } else if (match(Tok::KW_CONTINUE)){
+        expect(Tok::SEMICOLON,"expect ; in continue");
+        return std::make_unique<ContinueStmt>();
     }
-    // 表达式语句
+    // 表达式语句 
     std::unique_ptr<ExprNode> expr = parse_expression();
     expect(Tok::SEMICOLON, "Expected ';'");
     return std::make_unique<ExprStmt>(std::move(expr));

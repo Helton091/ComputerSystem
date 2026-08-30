@@ -1,0 +1,14 @@
+// nested_continue: continue 只作用于最内层循环，外层循环体完整执行
+int main() {
+    int count = 0;
+    for (int i = 0; i < 3; i = i + 1) {
+        for (int j = 0; j < 3; j = j + 1) {
+            if (j == 1) {
+                continue;
+            }
+            count = count + 1;
+        }
+        count = count + 10;
+    }
+    return count;    // 每轮外层: 内层贡献 2 + 外层贡献 10 = 12，共 3 轮 → 36
+}

@@ -1,0 +1,12 @@
+// for_continue: continue 必须先经过 update 块（i = i + 1）再回 cond，
+// 否则此用例会死循环
+int main() {
+    int sum = 0;
+    for (int i = 0; i < 5; i = i + 1) {
+        if (i == 2) {
+            continue;
+        }
+        sum = sum + i;
+    }
+    return sum;    // 0+1+3+4 = 8
+}

@@ -150,6 +150,8 @@ std::unique_ptr<Module> AST2IR::translate(AST::ProgramNode* program){
 
 void AST2IR::gen_function(AST::FunctionNode* funcnode){
     temp_counter_ = 0;
+    break_stack_.clear();
+    continue_stack_.clear();
     curr_func_ = module_->find_function(funcnode->name);
     curr_func_->add_block("entry");
     curr_bb_ = curr_func_->add_block("start");
@@ -184,6 +186,10 @@ void AST2IR::gen_function(AST::FunctionNode* funcnode){
 }
 
 void AST2IR::gen_stmt(AST::StatementNode* stmt){
+    if(curr_bb_->is_terminated())
+        curr_bb_ = curr_func_->add_block(new_block_name("_unreachable_"));
+
+
     if(auto bs = dynamic_cast<AST::BlockStatement*>(stmt)){
         enter_scope();
         for(const auto& bbs : bs->statements){
@@ -282,7 +288,8 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         BasicBlock* cond_bb = curr_func_->add_block(new_block_name("_while_cond_"));
         BasicBlock* body_bb = curr_func_->add_block(new_block_name("_while_body_"));
         BasicBlock* end_bb  = curr_func_->add_block(new_block_name("_while_end_"));
-
+        break_stack_.push_back(end_bb);
+        continue_stack_.push_back(cond_bb);
         if(!curr_bb_->is_terminated())
             make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
 
@@ -298,12 +305,18 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
             make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
 
         curr_bb_ = end_bb;
+        break_stack_.pop_back();
+        continue_stack_.pop_back();
     } else if(auto fs = dynamic_cast<AST::ForStmt*>(stmt)){
         enter_scope(); //for init
         gen_stmt(fs->init.get());
         BasicBlock* cond_bb = curr_func_->add_block(new_block_name("_for_cond_"));
         BasicBlock* body_bb = curr_func_->add_block(new_block_name("_for_body_"));
+        BasicBlock* update_bb = curr_func_->add_block(new_block_name("_for_update_"));
         BasicBlock* end_bb  = curr_func_->add_block(new_block_name("_for_end_"));
+        break_stack_.push_back(end_bb);
+        continue_stack_.push_back(update_bb);
+
         if(!curr_bb_->is_terminated())
             make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
         
@@ -312,8 +325,13 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         expect_type(IntType::get(), cond_v,
                     "in condition of 'for' statement");
         make_inst(curr_bb_,Opcode::BR,VoidType::get(),"",{cond_v,body_bb,end_bb});
+        
         curr_bb_ = body_bb;
         gen_stmt(fs->body.get());
+        if(!curr_bb_->is_terminated())
+            make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{update_bb});
+
+        curr_bb_ = update_bb;
         if(fs->update) gen_expr(fs->update.get());
         if(!curr_bb_->is_terminated())
             make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{cond_bb});
@@ -321,8 +339,15 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         curr_bb_ = end_bb;
 
 
-
+        break_stack_.pop_back();
+        continue_stack_.pop_back();
         exit_scope(); //for init
+    } else if(auto bs = dynamic_cast<AST::BreakStmt*>(stmt)){
+        if(break_stack_.empty()) throw std::runtime_error("[AST2IR] try to break in non-loop or non-switch context");
+        make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{break_stack_.back()});
+    } else if(auto cs = dynamic_cast<AST::ContinueStmt*>(stmt)){
+        if(continue_stack_.empty()) throw std::runtime_error("[AST2IR] try to continue in non-loop context");
+        make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{continue_stack_.back()});
     }
 }
 

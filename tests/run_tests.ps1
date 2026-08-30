@@ -98,6 +98,14 @@ $tests = @(
     @{ name = "for/null_init_2"; expect = 5 },
     @{ name = "for/scope_reuse"; expect = 18 },
     @{ name = "for/scope_after"; expect = 0 },
+    # break/continue
+    @{ name = "break_continue/for_break";      expect = 10 },
+    @{ name = "break_continue/for_continue";   expect = 8 },
+    @{ name = "break_continue/while_break";    expect = 12 },
+    @{ name = "break_continue/while_continue"; expect = 25 },
+    @{ name = "break_continue/nested_break";    expect = 6 },
+    @{ name = "break_continue/nested_continue"; expect = 36 },
+    @{ name = "break_continue/dead_code";       expect = 0 },
     #compound like +=
     @{ name = "compound/basic_int"; expect = 2 },
     @{ name = "compound/basic_float"; expect = 1 },
@@ -138,6 +146,9 @@ $tests = @(
     @{ name = "error/compound_pointer";      expect_compile_error = $true },
     @{ name = "error/compound_array";        expect_compile_error = $true },
     @{ name = "error/compound_not_lvalue";   expect_compile_error = $true },
+    # break/continue errors
+    @{ name = "error/break_outside";     expect_compile_error = $true },
+    @{ name = "error/continue_outside";  expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },

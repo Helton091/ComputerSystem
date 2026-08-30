@@ -1,6 +1,6 @@
 # C-- 编译器
 
-一个教学用的 C 语言子集（C--）编译器，把 `.cmm` 源文件编译为 RV32IM
+一个教学用的 C 语言子集（C--）编译器，把 `.cmm` 源文件编译为 RV32IMF
 汇编，再经汇编器生成二进制，最终在自研模拟器上运行。
 
 ## 工具链流程
@@ -39,7 +39,7 @@ make            # 构建 compiler.exe / assembler.exe / simulator.exe
 ## 测试
 
 ```bash
-# 全链路回归（41 个用例，从仓库根目录运行）
+# 全链路回归（120+ 个用例，从仓库根目录运行）
 powershell tests/run_tests.ps1
 
 # IR 层回归（AST → IR dump 逐字比对）
@@ -50,8 +50,10 @@ g++ -std=c++17 -Wall -Wextra -Isrc tests/AST2IRTEST.cpp \
 
 ## 当前状态
 
-语言特性见 `doc/language_version.md`（当前 v4：变量、作用域、
-if/while、函数与递归）。IR 为 value-based + alloca 内存模型，
+语言特性见 `doc/language_version.md`（当前 v10：变量与作用域、
+控制流、函数与递归、`int`/`float`、指针、一维数组、`for` 循环、
+复合赋值、`break`/`continue`）。IR 为 value-based + alloca 内存模型，
 设计细节见 `doc/ir_design_report.md`。
 
-下一步路线：mem2reg（SSA 化）、常量折叠、死代码消除。
+下一步路线：逻辑运算符 `&&`/`||`/`!`、
+指针算术与数组-指针退化。

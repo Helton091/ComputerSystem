@@ -1,0 +1,5 @@
+// continue_outside: continue 不在任何循环内，编译期报错
+int main() {
+    continue;
+    return 0;
+}

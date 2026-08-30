@@ -16,7 +16,7 @@ enum class Tok {
     AND_AND,  
     ASSIGN,
     EQ, NE, LT, GT, LE, GE,
-    KW_IF, KW_ELSE, KW_WHILE, KW_FOR, 
+    KW_IF, KW_ELSE, KW_WHILE, KW_FOR, KW_CONTINUE, KW_BREAK, 
 };
 
 inline std::unordered_map<std::string, Tok> keywords = {
@@ -29,6 +29,8 @@ inline std::unordered_map<std::string, Tok> keywords = {
     {"void", Tok::KW_VOID},
     {"nullptr", Tok::KW_NULLPTR},
     {"for", Tok::KW_FOR},
+    {"continue", Tok::KW_CONTINUE},
+    {"break",Tok::KW_BREAK},
 };
 
 struct Token {
