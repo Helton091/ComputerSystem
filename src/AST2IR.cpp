@@ -437,7 +437,8 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         Value* addr = find_variable(is->name);
         if(!addr) throw std::runtime_error("[AST2IR] undefined variable '" + is->name + "' used in function '" + curr_func_->name + "'");
         if(auto p = dynamic_cast<PointerType*>(addr->type)){
-            if(dynamic_cast<ArrayType*>(p->element_type)) throw std::runtime_error("[AST2IR] array type cannot be used as a value (" + is->name + ")" );
+            if(auto arr = dynamic_cast<ArrayType*>(p->element_type))
+                return make_inst(curr_bb_, Opcode::GETPTR, PointerType::get(arr->element_type), new_temp_name(), {addr, module_->get_const(0)});
             return make_inst(curr_bb_, Opcode::LOAD, p->element_type, new_temp_name(), {addr});
         }
         else
@@ -482,6 +483,22 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         auto [addr, elem_type] = gen_lvalue(cae->lhs.get());
         Value* old_v = make_inst(curr_bb_,Opcode::LOAD,elem_type,new_temp_name(),{addr});
         Value* right_v = gen_expr(cae->rhs.get());
+        //指针复合赋值 p += i / p -= i：与 p + i / p - i 同一套规则（标量 pointee、int 偏移），统一降级为 GETPTR 步进
+        if(auto pt = dynamic_cast<PointerType*>(old_v->type)){
+            auto is_scalar = [](Type* t){ return dynamic_cast<IntType*>(t) != nullptr || dynamic_cast<FloatType*>(t) != nullptr; };
+            if(cae->op != Tok::ADD_ASSIGN && cae->op != Tok::SUB_ASSIGN)
+                throw std::runtime_error("[AST2IR] invalid compound assignment operation on pointer in function '" + curr_func_->name + "'");
+            if(!is_scalar(pt->element_type))
+                throw std::runtime_error("[AST2IR] pointer arithmetic is only supported on pointers to scalar types, got '" + old_v->type->to_string() + "' in function '" + curr_func_->name + "'");
+            if(right_v->type != IntType::get())
+                throw std::runtime_error("[AST2IR] pointer arithmetic offset must be int, got '" + right_v->type->to_string() + "' in function '" + curr_func_->name + "'");
+            Value* idx = right_v;
+            if(cae->op == Tok::SUB_ASSIGN)
+                idx = make_inst(curr_bb_,Opcode::NEG,IntType::get(),new_temp_name(),{right_v});
+            Value* ptr_v = make_inst(curr_bb_,Opcode::GETPTR,old_v->type,new_temp_name(),{old_v,idx});
+            make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{ptr_v,addr});
+            return ptr_v;
+        }
         expect_type(right_v->type,old_v,"in compound assignment expression");
         Opcode new_op = compound_binop_opcode(cae->op,right_v->type);
         Value* new_v = nullptr;

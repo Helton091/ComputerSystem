@@ -1,0 +1,15 @@
+int main() {
+    int a[5];
+    int i = 0;
+    while (i < 5) {
+        a[i] = i * 10;
+        i += 1;
+    }
+    int s = *(a + 2);
+    s = s + *(2 + a);
+    int* p = a + 4;
+    s = s + (p - a);
+    s = s + (a < p);
+    s = s + (a == a);
+    return s;
+}

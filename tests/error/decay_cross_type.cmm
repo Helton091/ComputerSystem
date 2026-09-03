@@ -1,0 +1,5 @@
+int main() {
+    int a[3];
+    float* p = a;
+    return 0;
+}

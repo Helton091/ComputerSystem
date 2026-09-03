@@ -121,6 +121,13 @@ $tests = @(
     @{ name = "pointer_arith/nullptr_cmp"; expect = 110 },
     @{ name = "pointer_arith/float_ptr";  expect_fa0 = 3 },
     @{ name = "pointer_arith/bubble";     expect = 111 },
+    # array decay
+    @{ name = "array_decay/basic";       expect = 47 },
+    @{ name = "array_decay/walk";        expect = 15 },
+    @{ name = "array_decay/param";       expect = 30 },
+    @{ name = "array_decay/arith";       expect = 46 },
+    @{ name = "array_decay/ret";         expect = 3 },
+    @{ name = "array_decay/float_decay"; expect_fa0 = 6.0 },
 
 
     # error cases (expect compile-time failure)
@@ -165,6 +172,10 @@ $tests = @(
     @{ name = "error/ptr_sub_cross_type";   expect_compile_error = $true },
     @{ name = "error/ptr_to_array_arith";   expect_compile_error = $true },
     @{ name = "error/ptr_nullptr_both";     expect_compile_error = $true },
+    # array decay errors
+    @{ name = "error/decay_cross_type";     expect_compile_error = $true },
+    @{ name = "error/decay_assign";         expect_compile_error = $true },
+    @{ name = "error/decay_call_scalar";    expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },

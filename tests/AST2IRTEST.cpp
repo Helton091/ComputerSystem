@@ -172,7 +172,7 @@ static const std::vector<Case> cases = {
         "int main() { int a = 1; return 1; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 1, i32* %a\n"
@@ -185,7 +185,7 @@ static const std::vector<Case> cases = {
         "int main() { int a; return 1; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 0, i32* %a\n"
@@ -198,7 +198,7 @@ static const std::vector<Case> cases = {
         "int main() { int a; return a + 1; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 0, i32* %a\n"
@@ -213,7 +213,7 @@ static const std::vector<Case> cases = {
         "int main() { int a = 1; a = a + 2; return a; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 1, i32* %a\n"
@@ -230,7 +230,7 @@ static const std::vector<Case> cases = {
         "int main() { int a = 1; a + 2; return a; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 1, i32* %a\n"
@@ -246,8 +246,8 @@ static const std::vector<Case> cases = {
         "int main() { int a = 1; { int b = 2; b = 3; } return a; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
-        "  %b = alloca i32\n"
+        "  %a = alloca i32*\n"
+        "  %b = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 1, i32* %a\n"
@@ -281,7 +281,7 @@ static const std::vector<Case> cases = {
         "int main() { int a = 0; if (a) a = 1; return a; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %a = alloca i32\n"
+        "  %a = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 0, i32* %a\n"
@@ -316,8 +316,8 @@ static const std::vector<Case> cases = {
         "int main() { int i = 0; int s = 0; while (i < 3) { s = s + i; i = i + 1; } return s; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %i = alloca i32\n"
-        "  %s = alloca i32\n"
+        "  %i = alloca i32*\n"
+        "  %s = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 0, i32* %i\n"
@@ -347,8 +347,8 @@ static const std::vector<Case> cases = {
         "int main() { int i = 0; while (i < 2) { int j = 0; while (j < 2) j = j + 1; i = i + 1; } return i; }",
         "define i32 @main() {\n"
         "entry:\n"
-        "  %i = alloca i32\n"
-        "  %j = alloca i32\n"
+        "  %i = alloca i32*\n"
+        "  %j = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 0, i32* %i\n"
@@ -385,7 +385,7 @@ static const std::vector<Case> cases = {
         "int fib(int n) { if (n <= 1) return n; return fib(n-1) + fib(n-2); } int main() { return fib(10); }",
         "define i32 @fib(i32 %arg0) {\n"
         "entry:\n"
-        "  %n = alloca i32\n"
+        "  %n = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 %arg0, i32* %n\n"
@@ -430,7 +430,7 @@ static const std::vector<Case> cases = {
         "\n"
         "define i32 @is_even(i32 %arg0) {\n"
         "entry:\n"
-        "  %n = alloca i32\n"
+        "  %n = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 %arg0, i32* %n\n"
@@ -448,7 +448,7 @@ static const std::vector<Case> cases = {
         "\n"
         "define i32 @is_odd(i32 %arg0) {\n"
         "entry:\n"
-        "  %n = alloca i32\n"
+        "  %n = alloca i32*\n"
         "  jmp label %start\n"
         "start:\n"
         "  store i32 %arg0, i32* %n\n"
