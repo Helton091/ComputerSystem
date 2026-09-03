@@ -1,0 +1,18 @@
+// float_ptr: float 指针的算术（pointee 为 float，步长 4 字节）
+float main(){
+    float f[4];
+    int i;
+    i = 0;
+    while(i < 4){
+        f[i] = 1.5;
+        i = i + 1;
+    }
+    float* p;
+    p = &f[0];
+    p = p + 2;         // &f[2]
+    float s;
+    s = *p;            // 1.5
+    p = p - 1;         // &f[1]
+    s = s + *p;        // 3.0
+    return s;          // 期望 fa0 = 3.0
+}

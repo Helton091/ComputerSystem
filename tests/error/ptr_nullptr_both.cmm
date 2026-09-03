@@ -1,0 +1,6 @@
+// ptr_nullptr_both: 两侧均为 nullptr，无从确定类型，编译期报错
+int main(){
+    int b;
+    b = nullptr == nullptr;
+    return 0;
+}

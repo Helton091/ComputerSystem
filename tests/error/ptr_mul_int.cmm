@@ -1,0 +1,9 @@
+// ptr_mul_int: 指针 * 整数，编译期报错
+int main(){
+    int x;
+    x = 1;
+    int* p;
+    p = &x;
+    p = p * 2;
+    return 0;
+}

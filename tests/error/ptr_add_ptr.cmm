@@ -1,0 +1,11 @@
+// ptr_add_ptr: 指针 + 指针，编译期报错
+int main(){
+    int a[4];
+    int* p;
+    p = &a[0];
+    int* q;
+    q = &a[2];
+    int* r;
+    r = p + q;
+    return 0;
+}

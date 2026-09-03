@@ -92,7 +92,7 @@ enum class Opcode{
     LT, GT, LE, GE, EQ, NE,
     FLT,FGT,FLE,FGE,FEQ,FNE,
     BR, JMP, RET,
-    CALL, GETPTR, 
+    CALL, GETPTR, PTRDIFF, 
     PHI
 };
 

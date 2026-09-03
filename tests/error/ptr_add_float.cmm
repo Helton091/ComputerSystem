@@ -1,0 +1,8 @@
+// ptr_add_float: 指针 + float 偏移量，编译期报错（偏移必须是 int）
+int main(){
+    int a[4];
+    int* p;
+    p = &a[0];
+    p = p + 0.4;
+    return 0;
+}

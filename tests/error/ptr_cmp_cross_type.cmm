@@ -1,0 +1,14 @@
+// ptr_cmp_cross_type: int* 与 float* 比较，编译期报错（pointee 类型不同）
+int main(){
+    int x;
+    x = 1;
+    float f;
+    f = 1.5;
+    int* p;
+    p = &x;
+    float* fp;
+    fp = &f;
+    int b;
+    b = p < fp;
+    return 0;
+}

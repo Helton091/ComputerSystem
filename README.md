@@ -50,10 +50,10 @@ g++ -std=c++17 -Wall -Wextra -Isrc tests/AST2IRTEST.cpp \
 
 ## 当前状态
 
-语言特性见 `doc/language_version.md`（当前 v10：变量与作用域、
-控制流、函数与递归、`int`/`float`、指针、一维数组、`for` 循环、
-复合赋值、`break`/`continue`）。IR 为 value-based + alloca 内存模型，
+语言特性见 `doc/language_version.md`（当前 v11：变量与作用域、
+控制流、函数与递归、`int`/`float`、指针与指针算术、一维数组、
+`for` 循环、复合赋值、`break`/`continue`）。IR 为 value-based + alloca 内存模型，
 设计细节见 `doc/ir_design_report.md`。
 
-下一步路线：逻辑运算符 `&&`/`||`/`!`、
-指针算术与数组-指针退化。
+下一步路线（v11 剩余）：① 数组-指针退化 →
+② 带跳转表的 switch；`&&`/`||`/`!` 顺延至通用 PHI 就绪后（v12+）。

@@ -63,6 +63,15 @@ static Opcode unop_opcode(Tok op, Type* operand_type){
     }
 }
 
+Value* AST2IR::gen_expr_as(AST::ExprNode* expr, Type* expected, const std::string& context){
+    if(dynamic_cast<AST::NullPointerNode*>(expr)){
+        auto pt = dynamic_cast<PointerType*>(expected);
+        if(!pt) throw std::runtime_error("[AST2IR] nullptr used in non-pointer context " + context);
+        return module_->get_nullptr(pt->element_type);
+    }
+    return gen_expr(expr);
+}
+
 std::pair<Value*,Type*> AST2IR::gen_lvalue(AST::ExprNode* expr){
     Value* addr = nullptr;
     Type* elem_type = nullptr;
@@ -199,14 +208,8 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
     } else if(auto rs = dynamic_cast<AST::ReturnStatement*>(stmt)){
         if(curr_func_->return_type != VoidType::get()){
             if(!rs->expr) throw std::runtime_error("[AST2IR] function '" + curr_func_->name + "' with non-void return type must return a value");
-            Value* ret_val;
-            if(dynamic_cast<AST::NullPointerNode*>(rs->expr.get())){
-                auto pt = dynamic_cast<PointerType*>(curr_func_->return_type);
-                if(!pt) throw std::runtime_error("[AST2IR] nullptr returned from non-pointer function '" + curr_func_->name + "'");
-                ret_val = module_->get_nullptr(pt->element_type);
-            } else {
-                ret_val = gen_expr(rs->expr.get());
-            }
+            Value* ret_val = gen_expr_as(rs->expr.get(), curr_func_->return_type,
+                        "in return statement of function '" + curr_func_->name + "'");
             expect_type(curr_func_->return_type, ret_val,
                         "in return statement of function '" + curr_func_->name + "'");
             make_inst(curr_bb_, Opcode::RET, VoidType::get(),"",{ret_val});
@@ -223,15 +226,8 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         if(dynamic_cast<ArrayType*>(elem_type)) return;
         //array type don't involve initialization
         if(ds->init){
-            Type* elem_type = static_cast<PointerType*>(di->type)->element_type;
-            Value* stored_value;
-            if(dynamic_cast<AST::NullPointerNode*>(ds->init.get())){
-                auto pt = dynamic_cast<PointerType*>(elem_type);
-                if(!pt) throw std::runtime_error("[AST2IR] nullptr used to initialize non-pointer variable '" + ds->var.name + "'");
-                stored_value = module_->get_nullptr(pt->element_type);
-            } else {
-                stored_value = gen_expr(ds->init.get());
-            }
+            Value* stored_value = gen_expr_as(ds->init.get(), elem_type,
+                        "in initialization of variable '" + ds->var.name + "'");
             expect_type(elem_type, stored_value,
                         "in initialization of variable '" + ds->var.name + "'");
             make_inst(curr_bb_,Opcode::STORE,VoidType::get(),"",{stored_value,di});
@@ -342,11 +338,11 @@ void AST2IR::gen_stmt(AST::StatementNode* stmt){
         break_stack_.pop_back();
         continue_stack_.pop_back();
         exit_scope(); //for init
-    } else if(auto bs = dynamic_cast<AST::BreakStmt*>(stmt)){
-        if(break_stack_.empty()) throw std::runtime_error("[AST2IR] try to break in non-loop or non-switch context");
+    } else if(dynamic_cast<AST::BreakStmt*>(stmt)){
+        if(break_stack_.empty()) throw std::runtime_error("[AST2IR] 'break' outside of loop or switch in function '" + curr_func_->name + "'");
         make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{break_stack_.back()});
-    } else if(auto cs = dynamic_cast<AST::ContinueStmt*>(stmt)){
-        if(continue_stack_.empty()) throw std::runtime_error("[AST2IR] try to continue in non-loop context");
+    } else if(dynamic_cast<AST::ContinueStmt*>(stmt)){
+        if(continue_stack_.empty()) throw std::runtime_error("[AST2IR] 'continue' outside of loop in function '" + curr_func_->name + "'");
         make_inst(curr_bb_,Opcode::JMP,VoidType::get(),"",{continue_stack_.back()});
     }
 }
@@ -357,8 +353,64 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto nn = dynamic_cast<AST::FloatNumberNode*>(expr)){
         return module_->get_const(nn->value);
     } else if(auto bn = dynamic_cast<AST::BinaryExpr*>(expr)){
-        Value* o1 = gen_expr(bn->left.get());
-        Value* o2 = gen_expr(bn->right.get());
+        bool left_null  = dynamic_cast<AST::NullPointerNode*>(bn->left.get());
+        bool right_null = dynamic_cast<AST::NullPointerNode*>(bn->right.get());
+
+        Value* o1 = left_null  ? nullptr : gen_expr(bn->left.get());
+        Value* o2 = right_null ? nullptr : gen_expr(bn->right.get());
+
+        //nullptr 归一化：一边是 nullptr 时，类型从另一边注入
+        if(left_null != right_null){
+            Value* other = left_null ? o2 : o1;
+            auto pt = dynamic_cast<PointerType*>(other->type);
+            if(pt){
+                Value* null = module_->get_nullptr(pt->element_type);
+                if(left_null) o1 = null; else o2 = null;
+            } else {
+                throw std::runtime_error("[AST2IR] nullptr used with non-pointer operand in binary expression of function '" + curr_func_->name + "'");
+            }
+        }
+        if(left_null && right_null){
+            throw std::runtime_error("[AST2IR] cannot determine pointer type of nullptr in binary expression of function '" + curr_func_->name + "'");
+        }
+
+        auto ptr1 = dynamic_cast<PointerType*>(o1->type);
+        auto ptr2 = dynamic_cast<PointerType*>(o2->type);
+        auto is_scalar = [](Type* t){ return dynamic_cast<IntType*>(t) != nullptr || dynamic_cast<FloatType*>(t) != nullptr; };
+
+        //p ± i / i + p：按 pointee 大小缩放的指针步进（仅限标量 pointee）
+        if(ptr1 && o2->type==IntType::get() && (bn->op==Tok::ADD || bn->op == Tok::SUB)){
+            if(!is_scalar(ptr1->element_type))
+                throw std::runtime_error("[AST2IR] pointer arithmetic is only supported on pointers to scalar types, got '" + o1->type->to_string() + "' in function '" + curr_func_->name + "'");
+            if(bn->op == Tok::SUB)
+                o2 = make_inst(curr_bb_,Opcode::NEG,o2->type,new_temp_name(),{o2});
+            return make_inst(curr_bb_,Opcode::GETPTR,o1->type,new_temp_name(),{o1,o2});
+        }
+        if(o1->type==IntType::get() && ptr2 && bn->op==Tok::ADD){
+            if(!is_scalar(ptr2->element_type))
+                throw std::runtime_error("[AST2IR] pointer arithmetic is only supported on pointers to scalar types, got '" + o2->type->to_string() + "' in function '" + curr_func_->name + "'");
+            return make_inst(curr_bb_,Opcode::GETPTR,o2->type,new_temp_name(),{o2,o1});
+        }
+        //指针对：p - q 求元素差；比较降级为 PTRDIFF 后与 0 做整数比较
+        //等价性依赖平坦内存且指针差落在有符号 32 位内（MEM ≤ 2GB）
+        if(ptr1 && ptr2){
+            if(ptr1->element_type != ptr2->element_type)
+                throw std::runtime_error("[AST2IR] binary expression operands type mismatch: left is '" + o1->type->to_string() + "', right is '" + o2->type->to_string() + "' in function '" + curr_func_->name + "'");
+            if(!is_scalar(ptr1->element_type))
+                throw std::runtime_error("[AST2IR] pointer operations are only supported on pointers to scalar types, got '" + o1->type->to_string() + "' in function '" + curr_func_->name + "'");
+            if(bn->op == Tok::SUB)
+                return make_inst(curr_bb_,Opcode::PTRDIFF,IntType::get(),new_temp_name(),{o1,o2});
+            switch(bn->op){
+            case Tok::EQ: case Tok::NE:
+            case Tok::LT: case Tok::LE:
+            case Tok::GT: case Tok::GE:{
+                Value* diff = make_inst(curr_bb_,Opcode::PTRDIFF,IntType::get(),new_temp_name(),{o1,o2});
+                return make_inst(curr_bb_,binop_opcode(bn->op,IntType::get()),IntType::get(),new_temp_name(),{diff,module_->get_const(0)});
+            }
+            default:
+                throw std::runtime_error("[AST2IR] invalid operation on two pointer operands in function '" + curr_func_->name + "'");
+            }
+        }
         if(o1->type != o2->type) throw std::runtime_error("[AST2IR] binary expression operands type mismatch: left is '" + o1->type->to_string() + "', right is '" + o2->type->to_string() + "' in function '" + curr_func_->name + "'");
         Opcode op = binop_opcode(bn->op,o1->type);
         Type* result_type = is_comparison_opcode(op) ? IntType::get() : o1->type;
@@ -393,15 +445,7 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
     } else if(auto ae = dynamic_cast<AST::AssignmentExpr*>(expr)){
         auto [dest_addr,elem_type] = gen_lvalue(ae->lhs.get());
 
-        Value* rhs_inst;
-        if(dynamic_cast<AST::NullPointerNode*>(ae->rhs.get())){
-            auto elem_pt = dynamic_cast<PointerType*>(elem_type);
-            if(!elem_pt)
-                throw std::runtime_error("[AST2IR] nullptr cannot be assigned to non-pointer location");
-            rhs_inst = module_->get_nullptr(elem_pt->element_type);
-        } else {
-            rhs_inst = gen_expr(ae->rhs.get());
-        }
+        Value* rhs_inst = gen_expr_as(ae->rhs.get(), elem_type, "in assignment");
 
         expect_type(elem_type, rhs_inst,
                     "in assignment ");
@@ -417,16 +461,11 @@ Value* AST2IR::gen_expr(AST::ExprNode* expr){
         for(size_t i = 0; i < ce->args.size(); ++i){
             Type* param_type = func->args[i]->type;
             AST::ExprNode* en = ce->args[i].get();
-            if(dynamic_cast<AST::NullPointerNode*>(en)){
-                auto pt = dynamic_cast<PointerType*>(param_type);
-                if(!pt) throw std::runtime_error("[AST2IR] nullptr passed to non-pointer parameter " + std::to_string(i + 1) + " of function '" + ce->name + "'");
-                NULLPointer* null = module_->get_nullptr(pt->element_type);
-                args.push_back(null);
-                continue;
-            }
             
             
-            Value* arg_val = gen_expr(en);
+            Value* arg_val = gen_expr_as(en, param_type,
+                        "in argument " + std::to_string(i + 1) +
+                        " of call to function '" + ce->name + "'");
             expect_type(param_type, arg_val,
                         "in argument " + std::to_string(i + 1) +
                         " of call to function '" + ce->name + "'");

@@ -24,6 +24,7 @@ private:
     void gen_function(AST::FunctionNode* func);
     void gen_stmt(AST::StatementNode* stmt);
     Value* gen_expr(AST::ExprNode* expr);
+    Value* gen_expr_as(AST::ExprNode* expr, Type* expected, const std::string& context);
     Type* to_ir_type(AST::Type* ast_type);
     std::pair<Value*,Type*> gen_lvalue(AST::ExprNode* expr);
 

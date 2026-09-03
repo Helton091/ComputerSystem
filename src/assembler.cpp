@@ -304,8 +304,12 @@ void Assembler::Pass2(){
                     continue;
                 }
                 int32_t imm = parse_imm(raw_line.operands[2]);
+                uint32_t imm_bits = static_cast<uint32_t>(imm) & 0xFFF;
+                // SLLI/SRLI/SRAI 等 I 型移位指令：imm[11:5] 为 funct7，imm[4:0] 为移位数
+                if(inst_def->funct7 != 0)
+                    imm_bits = (static_cast<uint32_t>(inst_def->funct7) << 5) | (imm_bits & 0x1F);
                 emit_word(
-                    (static_cast<uint32_t>(imm & 0xFFF) << 20) | (rs1 << 15) |
+                    (imm_bits << 20) | (rs1 << 15) |
                     (inst_def->funct3 << 12) | (rd << 7) | inst_def->opcode
                 );
                 break;

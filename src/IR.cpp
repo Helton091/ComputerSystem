@@ -170,6 +170,7 @@ static std::string op_str(Opcode op){
     case Opcode::RET:    return "ret";
     case Opcode::CALL:   return "call";
     case Opcode::GETPTR: return "getptr";
+    case Opcode::PTRDIFF: return "ptrdiff";
     case Opcode::PHI:    return "phi";
     }
     return "?";
@@ -413,6 +414,17 @@ Instruction* make_inst(BasicBlock* bb, Opcode op, Type* type,
             if(new_inst->operands[i+1]->type != callee->args[i]->type)
                 throw std::runtime_error("[IR] call argument type mismatch with function " + callee->name);
         }
+    }
+    break;
+    case Opcode::PTRDIFF:{
+        if(new_inst->operands.size() != 2) throw std::runtime_error("[IR] ptrdiff should have 2 operands");
+        auto type1 = dynamic_cast<PointerType*>(new_inst->operands[0]->type);
+        auto type2 = dynamic_cast<PointerType*>(new_inst->operands[1]->type);
+        if(!type1 || !type2)
+            throw std::runtime_error("[IR] ptrdiff's operands type should be pointer type");
+        if(type1 != type2)
+            throw std::runtime_error("[IR] ptrdiff's operands should be the same pointer type");
+        if(new_inst->type != IntType::get()) throw std::runtime_error("[IR] ptrdiff's return type should be int type");
     }
     break;
     case Opcode::PHI:

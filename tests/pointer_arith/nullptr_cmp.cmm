@@ -1,0 +1,16 @@
+// nullptr_cmp: 指针与 nullptr 的等值比较（归一化路径）
+int main(){
+    int x;
+    x = 5;
+    int* p;
+    p = &x;
+    int* z;
+    z = nullptr;
+    int r;
+    r = 0;
+    if(p == nullptr) r = r + 1;    // 假
+    if(p != nullptr) r = r + 10;   // 真
+    if(z == nullptr) r = r + 100;  // 真
+    if(z != nullptr) r = r + 1000; // 假
+    return r;                      // 期望 110
+}

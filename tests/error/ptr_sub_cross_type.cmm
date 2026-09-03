@@ -1,0 +1,14 @@
+// ptr_sub_cross_type: int* - float*，编译期报错（pointee 类型不同）
+int main(){
+    int x;
+    x = 1;
+    float f;
+    f = 1.5;
+    int* p;
+    p = &x;
+    float* fp;
+    fp = &f;
+    int d;
+    d = p - fp;
+    return 0;
+}

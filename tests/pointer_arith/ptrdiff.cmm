@@ -1,0 +1,19 @@
+// ptrdiff: 指针差——正差、负差（验证 srai 算术右移路径）、与首元素之差
+int main(){
+    int a[5];
+    int i;
+    i = 0;
+    while(i < 5){
+        a[i] = i;
+        i = i + 1;
+    }
+    int* p;
+    p = &a[4];
+    int* q;
+    q = &a[1];
+    int d;
+    d = p - q;           // 3
+    d = d + (q - p);     // 3 + (-3) = 0，负差必须走算术右移
+    d = d + (p - &a[0]); // 0 + 4 = 4
+    return d;            // 期望 4
+}

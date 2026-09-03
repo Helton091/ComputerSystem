@@ -113,6 +113,14 @@ $tests = @(
     @{ name = "compound/in_condition"; expect = 42 },
     @{ name = "compound/deref"; expect = 10 },
     @{ name = "compound/array_elem"; expect = 32 },
+    # pointer arithmetic
+    @{ name = "pointer_arith/basic";      expect = 204 },
+    @{ name = "pointer_arith/walk";       expect = 10 },
+    @{ name = "pointer_arith/ptrdiff";    expect = 4 },
+    @{ name = "pointer_arith/compare";    expect = 10110011 },
+    @{ name = "pointer_arith/nullptr_cmp"; expect = 110 },
+    @{ name = "pointer_arith/float_ptr";  expect_fa0 = 3 },
+    @{ name = "pointer_arith/bubble";     expect = 111 },
 
 
     # error cases (expect compile-time failure)
@@ -149,6 +157,14 @@ $tests = @(
     # break/continue errors
     @{ name = "error/break_outside";     expect_compile_error = $true },
     @{ name = "error/continue_outside";  expect_compile_error = $true },
+    # pointer arithmetic errors
+    @{ name = "error/ptr_add_ptr";          expect_compile_error = $true },
+    @{ name = "error/ptr_mul_int";          expect_compile_error = $true },
+    @{ name = "error/ptr_add_float";        expect_compile_error = $true },
+    @{ name = "error/ptr_cmp_cross_type";   expect_compile_error = $true },
+    @{ name = "error/ptr_sub_cross_type";   expect_compile_error = $true },
+    @{ name = "error/ptr_to_array_arith";   expect_compile_error = $true },
+    @{ name = "error/ptr_nullptr_both";     expect_compile_error = $true },
     # integration tests (combine multiple language features)
     @{ name = "integration/fib";            expect = 55 },
     @{ name = "integration/factorial";      expect = 120 },

@@ -387,6 +387,16 @@ void IR2RISCV::gen_bb(const Function* func, const BasicBlock* bb){
             store_int_result(inst.get(),"t0");
         }
         break;
+        case Opcode::PTRDIFF:{
+            load_pointer_operand(inst->operands[0],"t0");
+            load_pointer_operand(inst->operands[1],"t1");
+            emit("sub t0,t0,t1");
+            auto pt = dynamic_cast<PointerType*>(inst->operands[0]->type);
+            if(pt->element_type->size() == 4) emit("srai t0, t0, 2");
+            else throw std::runtime_error("[IR2RISCV] ptrdiff unsupported pointee size");
+            store_int_result(inst.get(),"t0");
+        }
+        break;
         case Opcode::PHI:
         default:
             throw std::runtime_error("[IR2RISCV] unknown opcode " + std::to_string(static_cast<int>(inst->op)) + " in function '" + func->name + "'");

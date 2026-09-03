@@ -1,0 +1,20 @@
+// walk: 指针游标遍历数组（GETPTR + 比较 + 步进三者联动，不依赖数组退化）
+int main(){
+    int a[5];
+    int i;
+    i = 0;
+    while(i < 5){
+        a[i] = i;
+        i = i + 1;
+    }
+    int* p;
+    p = &a[0];
+    int sum;
+    sum = 0;
+    while(p < &a[4]){
+        sum = sum + *p;
+        p = p + 1;
+    }
+    sum = sum + *p;      // 循环停在 &a[4]，补上最后一个元素
+    return sum;          // 0+1+2+3+4 = 10
+}
